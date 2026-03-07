@@ -1,0 +1,23 @@
+{
+  "grid_radius": 5,
+  "terrain_map": {},
+  "risk_map": {},
+  "constraints": {
+    "total_patrol": 20,
+    "total_camps": 5,
+    "max_rangers_per_camp": 5,
+    "total_cameras": 10,
+    "total_drones": 3,
+    "total_fence_length": 50.0
+  },
+  "coverage_params": {
+    "patrol_radius": 5.0,
+    "drone_radius": 8.0,
+    "camera_radius": 3.0,
+    "fence_protection": 0.5,
+    "wp": 0.3,
+    "wd": 0.3,
+    "wc": 0.2,
+    "wf": 0.2
+  }
+}
