@@ -570,7 +570,7 @@ def visualize_rect_risk_heatmap(
     """Visualize risk heatmap on rectangular hex grid."""
     hex_size = 1.0
 
-    fig, ax = plt.subplots(figsize=(18, 14), dpi=100)
+    fig, ax = plt.subplots(figsize=(24, 18), dpi=100)
 
     # Create risk dictionary
     risk_dict = {}
@@ -590,6 +590,7 @@ def visualize_rect_risk_heatmap(
     cmap = LinearSegmentedColormap.from_list('risk_gradient', colors)
 
     patches = []
+    text_items = []
 
     for hex_coord in hex_coords:
         x, y = hex_to_pixel_offset(hex_coord, hex_size)
@@ -622,6 +623,23 @@ def visualize_rect_risk_heatmap(
             linewidth=0.3
         )
         patches.append(hex_patch)
+
+        # Choose text color based on risk (black or white for contrast)
+        if risk < 0.3 or risk > 0.7:
+            text_color = 'white'
+        else:
+            text_color = 'black'
+
+        # Add risk value text
+        risk_text = f"{risk:.2f}"
+        text_item = ax.text(
+            x, y, risk_text,
+            ha='center', va='center',
+            color=text_color,
+            fontsize=7,
+            fontweight='bold'
+        )
+        text_items.append(text_item)
 
     # Add all patches
     collection = PatchCollection(patches, match_original=True)
@@ -757,11 +775,11 @@ def main():
     print("  RECTANGULAR HEXAGON MAP GENERATOR")
     print("="*70)
 
-    # Generate data - 25 cols x 18 rows (approx 100x50 rectangle scale)
+    # Generate data - 15 cols x 12 rows (smaller for clear labels)
     print("\n[1/4] Generating rectangular hex map data...")
     data, hex_coords, road_hexes, water_hexes = generate_rectangular_hex_map_data(
-        num_cols=25,
-        num_rows=18,
+        num_cols=15,
+        num_rows=12,
         output_json="rect_hex_map_data.json"
     )
 
