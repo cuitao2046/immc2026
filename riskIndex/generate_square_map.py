@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate a square grid map with curved roads and water features.
+Supports feature configuration via JSON config file.
 """
 
 import sys
@@ -34,6 +35,68 @@ class SquareCoord:
 
     def __hash__(self):
         return hash((self.x, self.y))
+
+
+def load_config(config_path: str) -> Dict[str, Any]:
+    """Load feature configuration from JSON file."""
+    default_config = {
+        "features": {
+            "ponds": 1,
+            "large_water": 0,
+            "forest": 1,
+            "shrub": 1,
+            "grassland": 1,
+            "rhino": 1,
+            "elephant": 1,
+            "bird": 1,
+            "roads": 1,
+            "mountain": 0,
+            "hills": 0
+        },
+        "vegetation_distribution": {
+            "grassland_ratio": 0.35,
+            "forest_ratio": 0.40,
+            "shrub_ratio": 0.25
+        },
+        "water_config": {
+            "pond_count": 3,
+            "pond_min_radius": 2.0,
+            "pond_max_radius": 4.0,
+            "large_water_radius": 8.0,
+            "has_river": 1
+        },
+        "road_config": {
+            "main_road_count": 3,
+            "curvature": 0.35,
+            "branch_probability": 0.12
+        },
+        "terrain_config": {
+            "mountain_count": 2,
+            "mountain_radius": 4.0,
+            "hill_count": 5,
+            "hill_radius": 2.5
+        }
+    }
+
+    if config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                user_config = json.load(f)
+            # Merge user config with defaults
+            for key in default_config:
+                if key in user_config:
+                    default_config[key].update(user_config[key])
+            print(f"Loaded configuration from: {config_path}")
+        except Exception as e:
+            print(f"Warning: Could not load config file {config_path}: {e}")
+            print("Using default configuration.")
+
+    return default_config
+
+
+def is_feature_enabled(config: Dict[str, Any], feature_name: str) -> bool:
+    """Check if a feature is enabled in the config."""
+    return config.get("features", {}).get(feature_name, 0) == 1
 
 
 def square_to_pixel(coord: SquareCoord, size: float = 1.0) -> Tuple[float, float]:
@@ -194,146 +257,274 @@ def generate_curved_road_square(
 def generate_square_map_data(
     num_cols: int = 30,
     num_rows: int = 20,
-    output_json: str = "square_map_data.json"
+    output_json: str = "square_map_data.json",
+    config: Optional[Dict[str, Any]] = None
 ):
-    """Generate square grid map data."""
+    """Generate square grid map data with feature configuration."""
+    if config is None:
+        config = load_config(None)
+
     print(f"Generating square grid: {num_cols} cols × {num_rows} rows...")
     coords = generate_square_grid(num_cols, num_rows)
     coord_set = set(coords)
     print(f"  Total squares: {len(coords)}")
 
-    # Generate main roads
-    print("Generating curved roads...")
+    # Generate roads if enabled
     all_road_coords = set()
-    road_paths = []
+    if is_feature_enabled(config, "roads"):
+        print("Generating curved roads...")
+        road_paths = []
+        road_config = config.get("road_config", {})
+        num_roads = road_config.get("main_road_count", 3)
+        curvature = road_config.get("curvature", 0.35)
+        branch_prob = road_config.get("branch_probability", 0.12)
 
-    # Main road 1: starts from left, goes towards right
-    start1 = SquareCoord(x=0, y=num_rows // 2)
-    roads1 = generate_curved_road_square(start1, num_cols, num_rows, length=num_cols * 2, curvature=0.35, branch_prob=0.12)
-    for road in roads1:
-        road_paths.append(road)
-        for c in road:
-            if c in coord_set:
-                all_road_coords.add(c)
+        # Start positions for roads
+        start_positions = [
+            SquareCoord(x=0, y=num_rows // 2),
+            SquareCoord(x=2, y=2),
+            SquareCoord(x=num_cols // 2, y=0),
+            SquareCoord(x=num_cols - 1, y=num_rows // 2),
+            SquareCoord(x=num_cols // 2, y=num_rows - 1),
+        ]
 
-    # Main road 2: starts from bottom-left, goes towards top-right
-    start2 = SquareCoord(x=2, y=2)
-    roads2 = generate_curved_road_square(start2, num_cols, num_rows, length=int(num_cols * 1.5), curvature=0.32, branch_prob=0.15)
-    for road in roads2:
-        road_paths.append(road)
-        for c in road:
-            if c in coord_set:
-                all_road_coords.add(c)
+        for i in range(min(num_roads, len(start_positions))):
+            start = start_positions[i]
+            roads = generate_curved_road_square(
+                start, num_cols, num_rows,
+                length=max(num_cols, num_rows) * 2,
+                curvature=curvature,
+                branch_prob=branch_prob
+            )
+            for road in roads:
+                road_paths.append(road)
+                for c in road:
+                    if c in coord_set:
+                        all_road_coords.add(c)
 
-    # Main road 3: starts from top, goes towards bottom
-    start3 = SquareCoord(x=num_cols // 2, y=0)
-    roads3 = generate_curved_road_square(start3, num_cols, num_rows, length=num_rows * 2, curvature=0.38, branch_prob=0.1)
-    for road in roads3:
-        road_paths.append(road)
-        for c in road:
-            if c in coord_set:
-                all_road_coords.add(c)
+        print(f"  Road squares: {len(all_road_coords)}")
 
-    print(f"  Road squares: {len(all_road_coords)}")
-
-    # Generate water sources (ponds and lakes)
-    print("Generating water sources...")
+    # Generate water sources if enabled
     all_water_coords = set()
+    water_config = config.get("water_config", {})
 
-    # Pond 1
-    pond1_center = SquareCoord(x=num_cols // 4, y=num_rows // 3)
-    pond1_radius = 3
-    for c in coords:
-        if square_distance(c, pond1_center) <= pond1_radius:
-            all_water_coords.add(c)
+    if is_feature_enabled(config, "ponds") or is_feature_enabled(config, "large_water"):
+        print("Generating water sources...")
 
-    # Pond 2
-    pond2_center = SquareCoord(x=num_cols * 3 // 4, y=num_rows * 2 // 3)
-    pond2_radius = 3.5
-    for c in coords:
-        if square_distance(c, pond2_center) <= pond2_radius:
-            all_water_coords.add(c)
+        # Generate ponds
+        if is_feature_enabled(config, "ponds"):
+            pond_count = water_config.get("pond_count", 3)
+            pond_min_r = water_config.get("pond_min_radius", 2.0)
+            pond_max_r = water_config.get("pond_max_radius", 4.0)
 
-    # Pond 3
-    pond3_center = SquareCoord(x=num_cols // 2, y=num_rows // 2)
-    pond3_radius = 2.5
-    for c in coords:
-        if square_distance(c, pond3_center) <= pond3_radius:
-            all_water_coords.add(c)
+            for i in range(pond_count):
+                # Distribute ponds across the map
+                if pond_count == 1:
+                    cx, cy = num_cols // 2, num_rows // 2
+                elif pond_count == 2:
+                    positions = [(num_cols // 4, num_rows // 3), (num_cols * 3 // 4, num_rows * 2 // 3)]
+                    cx, cy = positions[i]
+                else:
+                    positions = [
+                        (num_cols // 4, num_rows // 3),
+                        (num_cols * 3 // 4, num_rows * 2 // 3),
+                        (num_cols // 2, num_rows // 2),
+                        (num_cols // 5, num_rows * 3 // 4),
+                        (num_cols * 4 // 5, num_rows // 4),
+                    ]
+                    cx, cy = positions[i % len(positions)]
 
-    # River - winding path from right to left
-    river_coords = []
-    river_current = SquareCoord(x=num_cols - 1, y=num_rows - 2)
-    river_coords.append(river_current)
-    all_water_coords.add(river_current)
+                pond_center = SquareCoord(x=cx, y=cy)
+                pond_radius = random.uniform(pond_min_r, pond_max_r)
+                for c in coords:
+                    if square_distance(c, pond_center) <= pond_radius:
+                        all_water_coords.add(c)
 
-    for _ in range(num_cols * 2):
-        neighbors = get_square_neighbors_4way(river_current, num_cols, num_rows)
-        river_so_far = set(river_coords)
+        # Generate large water body
+        if is_feature_enabled(config, "large_water"):
+            large_radius = water_config.get("large_water_radius", 8.0)
+            large_center = SquareCoord(x=num_cols // 2, y=num_rows // 2)
+            for c in coords:
+                if square_distance(c, large_center) <= large_radius:
+                    all_water_coords.add(c)
 
-        # Prefer left-moving neighbors
-        leftish = [n for n in neighbors if n.x < river_current.x and n not in river_so_far]
-        other = [n for n in neighbors if n not in river_so_far and n not in leftish]
+        # Generate river
+        if water_config.get("has_river", 1) == 1:
+            river_coords = []
+            river_current = SquareCoord(x=num_cols - 1, y=num_rows - 2)
+            river_coords.append(river_current)
+            all_water_coords.add(river_current)
 
-        if leftish and random.random() < 0.7:
-            next_river = random.choice(leftish)
-        elif other:
-            next_river = random.choice(other)
-        else:
-            break
+            for _ in range(num_cols * 2):
+                neighbors = get_square_neighbors_4way(river_current, num_cols, num_rows)
+                river_so_far = set(river_coords)
 
-        river_coords.append(next_river)
-        all_water_coords.add(next_river)
-        river_current = next_river
+                # Prefer left-moving neighbors
+                leftish = [n for n in neighbors if n.x < river_current.x and n not in river_so_far]
+                other = [n for n in neighbors if n not in river_so_far and n not in leftish]
 
-    print(f"  Water squares: {len(all_water_coords)}")
+                if leftish and random.random() < 0.7:
+                    next_river = random.choice(leftish)
+                elif other:
+                    next_river = random.choice(other)
+                else:
+                    break
+
+                river_coords.append(next_river)
+                all_water_coords.add(next_river)
+                river_current = next_river
+
+        print(f"  Water squares: {len(all_water_coords)}")
+
+    # Generate terrain features (mountains and hills)
+    all_mountain_coords = set()
+    all_hill_coords = set()
+    terrain_config = config.get("terrain_config", {})
+
+    if is_feature_enabled(config, "mountain"):
+        print("Generating mountains...")
+        mountain_count = terrain_config.get("mountain_count", 2)
+        mountain_radius = terrain_config.get("mountain_radius", 4.0)
+
+        for i in range(mountain_count):
+            if mountain_count == 1:
+                cx, cy = num_cols // 2, num_rows // 2
+            else:
+                positions = [
+                    (num_cols // 3, num_rows * 2 // 3),
+                    (num_cols * 2 // 3, num_rows // 3),
+                ]
+                cx, cy = positions[i % len(positions)]
+
+            mountain_center = SquareCoord(x=cx, y=cy)
+            for c in coords:
+                if square_distance(c, mountain_center) <= mountain_radius:
+                    all_mountain_coords.add(c)
+
+        print(f"  Mountain squares: {len(all_mountain_coords)}")
+
+    if is_feature_enabled(config, "hills"):
+        print("Generating hills...")
+        hill_count = terrain_config.get("hill_count", 5)
+        hill_radius = terrain_config.get("hill_radius", 2.5)
+
+        for i in range(hill_count):
+            # Random hill positions, avoid mountains
+            attempts = 0
+            while attempts < 50:
+                cx = random.randint(int(num_cols * 0.1), int(num_cols * 0.9))
+                cy = random.randint(int(num_rows * 0.1), int(num_rows * 0.9))
+                hill_center = SquareCoord(x=cx, y=cy)
+
+                # Check if too close to mountains
+                too_close = False
+                for m in all_mountain_coords:
+                    if square_distance(hill_center, m) < mountain_radius + 2:
+                        too_close = True
+                        break
+
+                if not too_close:
+                    break
+                attempts += 1
+
+            for c in coords:
+                if square_distance(c, hill_center) <= hill_radius:
+                    all_hill_coords.add(c)
+
+        print(f"  Hill squares: {len(all_hill_coords)}")
 
     # Generate grid data for each square
     print("Generating grid data...")
     grids = []
 
+    veg_dist = config.get("vegetation_distribution", {})
+    grassland_ratio = veg_dist.get("grassland_ratio", 0.35)
+    forest_ratio = veg_dist.get("forest_ratio", 0.40)
+    shrub_ratio = veg_dist.get("shrub_ratio", 0.25)
+
+    # Normalize ratios
+    total_ratio = grassland_ratio + forest_ratio + shrub_ratio
+    if total_ratio > 0:
+        grassland_ratio /= total_ratio
+        forest_ratio /= total_ratio
+        shrub_ratio /= total_ratio
+
     for idx, coord in enumerate(coords):
         # Grid ID
         grid_id = f"S{idx:04d}"
 
-        # Fire risk: higher away from water, near top-right
+        # Calculate distance to water if water exists
         dist_to_water = float('inf')
-        for water_coord in all_water_coords:
-            dist = square_distance(coord, water_coord)
-            if dist < dist_to_water:
-                dist_to_water = dist
+        if all_water_coords:
+            for water_coord in all_water_coords:
+                dist = square_distance(coord, water_coord)
+                if dist < dist_to_water:
+                    dist_to_water = dist
 
-        water_factor = min(1.0, dist_to_water / 10.0)
+        # Fire risk: higher away from water, near top-right
+        if dist_to_water == float('inf'):
+            water_factor = 0.5
+        else:
+            water_factor = min(1.0, dist_to_water / 10.0)
         pos_factor = (coord.x / num_cols) * 0.5 + ((num_rows - coord.y) / num_rows) * 0.5
         fire_risk = 0.1 + 0.7 * water_factor * pos_factor + random.uniform(-0.1, 0.1)
         fire_risk = min(1.0, max(0.0, fire_risk))
 
-        # Terrain complexity: more complex near center
+        # Terrain complexity: more complex near center, increased by mountains/hills
         center_dist = square_distance(coord, SquareCoord(x=num_cols//2, y=num_rows//2))
         max_center_dist = math.sqrt((num_cols/2)**2 + (num_rows/2)**2)
         terrain_complexity = 0.2 + 0.6 * (1.0 - min(1.0, center_dist / max_center_dist))
+
+        # Increase complexity for mountains and hills
+        if coord in all_mountain_coords:
+            terrain_complexity = 0.9 + random.uniform(-0.05, 0.05)
+        elif coord in all_hill_coords:
+            terrain_complexity = 0.7 + random.uniform(-0.1, 0.1)
+
         terrain_complexity = min(1.0, max(0.0, terrain_complexity + random.uniform(-0.1, 0.1)))
 
-        # Vegetation type
-        veg_random = random.random()
-        if veg_random < 0.35:
+        # Vegetation type - check which types are enabled
+        enabled_veg_types = []
+        veg_cumulative = []
+
+        if is_feature_enabled(config, "grassland"):
+            enabled_veg_types.append("GRASSLAND")
+            veg_cumulative.append(grassland_ratio)
+        if is_feature_enabled(config, "forest"):
+            enabled_veg_types.append("FOREST")
+            veg_cumulative.append(grassland_ratio + forest_ratio)
+        if is_feature_enabled(config, "shrub"):
+            enabled_veg_types.append("SHRUB")
+            veg_cumulative.append(1.0)
+
+        if not enabled_veg_types:
+            # Default to grassland if nothing enabled
             vegetation_type = "GRASSLAND"
-        elif veg_random < 0.75:
-            vegetation_type = "FOREST"
         else:
-            vegetation_type = "SHRUB"
+            # Recalculate cumulative for enabled types
+            veg_random = random.random()
+            vegetation_type = enabled_veg_types[0]  # default
+            for i, cum_prob in enumerate(veg_cumulative):
+                if veg_random <= cum_prob:
+                    vegetation_type = enabled_veg_types[i]
+                    break
 
         # Species densities: higher near water
-        water_attraction = max(0.0, 1.0 - dist_to_water / 8.0)
-        rhino_density = 0.05 + 0.85 * water_attraction * random.uniform(0.5, 1.0)
-        elephant_density = 0.1 + 0.75 * water_attraction * random.uniform(0.5, 1.0)
-        bird_density = 0.2 + 0.6 * random.uniform(0.5, 1.0)
+        if dist_to_water == float('inf'):
+            water_attraction = 0.3
+        else:
+            water_attraction = max(0.0, 1.0 - dist_to_water / 8.0)
 
-        species_densities = {
-            "rhino": min(1.0, rhino_density),
-            "elephant": min(1.0, elephant_density),
-            "bird": min(1.0, bird_density)
-        }
+        species_densities = {}
+        if is_feature_enabled(config, "rhino"):
+            rhino_density = 0.05 + 0.85 * water_attraction * random.uniform(0.5, 1.0)
+            species_densities["rhino"] = min(1.0, rhino_density)
+        if is_feature_enabled(config, "elephant"):
+            elephant_density = 0.1 + 0.75 * water_attraction * random.uniform(0.5, 1.0)
+            species_densities["elephant"] = min(1.0, elephant_density)
+        if is_feature_enabled(config, "bird"):
+            bird_density = 0.2 + 0.6 * random.uniform(0.5, 1.0)
+            species_densities["bird"] = min(1.0, bird_density)
 
         grids.append({
             "grid_id": grid_id,
@@ -348,6 +539,8 @@ def generate_square_map_data(
     # Create map_config
     road_locations = [[c.x, c.y] for c in all_road_coords]
     water_locations = [[c.x, c.y] for c in all_water_coords]
+    mountain_locations = [[c.x, c.y] for c in all_mountain_coords]
+    hill_locations = [[c.x, c.y] for c in all_hill_coords]
 
     data = {
         "map_config": {
@@ -355,7 +548,9 @@ def generate_square_map_data(
             "num_rows": num_rows,
             "boundary_type": "SQUARE",
             "road_locations": road_locations,
-            "water_locations": water_locations
+            "water_locations": water_locations,
+            "mountain_locations": mountain_locations,
+            "hill_locations": hill_locations
         },
         "square_coords": [[c.x, c.y] for c in coords],
         "grids": grids,
@@ -373,8 +568,10 @@ def generate_square_map_data(
     print(f"  Total squares: {len(coords)}")
     print(f"  Road squares: {len(road_locations)}")
     print(f"  Water squares: {len(water_locations)}")
+    print(f"  Mountain squares: {len(mountain_locations)}")
+    print(f"  Hill squares: {len(hill_locations)}")
 
-    return data, coords, all_road_coords, all_water_coords
+    return data, coords, all_road_coords, all_water_coords, all_mountain_coords, all_hill_coords
 
 
 def visualize_square_map(
@@ -382,6 +579,8 @@ def visualize_square_map(
     coords: List[SquareCoord],
     road_coords: Set[SquareCoord],
     water_coords: Set[SquareCoord],
+    mountain_coords: Set[SquareCoord],
+    hill_coords: Set[SquareCoord],
     output_path: str = "square_map_features.jpg"
 ):
     """Visualize square grid map features."""
@@ -399,11 +598,12 @@ def visualize_square_map(
         # Determine color
         if coord in water_coords:
             color = [0.3, 0.6, 1.0]  # Blue - water
+        elif coord in mountain_coords:
+            color = [0.4, 0.4, 0.45]  # Dark gray - mountain
+        elif coord in hill_coords:
+            color = [0.55, 0.55, 0.6]  # Medium gray - hill
         elif coord in road_coords:
-            if coord in water_coords:
-                color = [0.5, 0.35, 0.2]  # Dark brown - bridge
-            else:
-                color = [0.7, 0.55, 0.4]  # Brown - road
+            color = [0.7, 0.55, 0.4]  # Brown - road
         else:
             color = [0.92, 0.95, 0.90]  # Light background
 
@@ -423,11 +623,17 @@ def visualize_square_map(
     ax.add_collection(collection)
 
     # Add legend
-    legend_elements = [
-        Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'),
-        Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'),
-        Patch(facecolor=[0.92, 0.95, 0.90], edgecolor='gray', label='Land'),
-    ]
+    legend_elements = []
+    if road_coords:
+        legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
+    if water_coords:
+        legend_elements.append(Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'))
+    if mountain_coords:
+        legend_elements.append(Patch(facecolor=[0.4, 0.4, 0.45], edgecolor='black', label='Mountain'))
+    if hill_coords:
+        legend_elements.append(Patch(facecolor=[0.55, 0.55, 0.6], edgecolor='black', label='Hill'))
+    legend_elements.append(Patch(facecolor=[0.92, 0.95, 0.90], edgecolor='gray', label='Land'))
+
     ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
     # Set limits and aspect
@@ -452,7 +658,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Square Grid Map Generator - Generate square grid maps with curved roads"
+        description="Square Grid Map Generator - Generate square grid maps with feature config"
     )
     parser.add_argument(
         "--cols", "-c",
@@ -478,6 +684,12 @@ def main():
         default="square_map_features.jpg",
         help="Output map features image path (default: square_map_features.jpg)"
     )
+    parser.add_argument(
+        "--config", "-f",
+        type=str,
+        default="map_feature_config.json",
+        help="Feature configuration JSON file path (default: map_feature_config.json)"
+    )
 
     args = parser.parse_args()
 
@@ -485,17 +697,21 @@ def main():
     print("  SQUARE GRID MAP GENERATOR")
     print("="*70)
 
+    # Load config
+    config = load_config(args.config)
+
     # Generate data
     print(f"\n[1/2] Generating square grid data: {args.cols} cols × {args.rows} rows...")
-    data, coords, road_coords, water_coords = generate_square_map_data(
+    data, coords, road_coords, water_coords, mountain_coords, hill_coords = generate_square_map_data(
         num_cols=args.cols,
         num_rows=args.rows,
-        output_json=args.data
+        output_json=args.data,
+        config=config
     )
 
     # Visualize map features
     print(f"\n[2/2] Visualizing square map to: {args.map_image}")
-    visualize_square_map(data, coords, road_coords, water_coords, args.map_image)
+    visualize_square_map(data, coords, road_coords, water_coords, mountain_coords, hill_coords, args.map_image)
 
     # Print summary
     print("\n" + "="*70)
@@ -505,6 +721,8 @@ def main():
     print(f"  Total squares: {len(coords)}")
     print(f"  Road squares: {len(road_coords)}")
     print(f"  Water squares: {len(water_coords)}")
+    print(f"  Mountain squares: {len(mountain_coords)}")
+    print(f"  Hill squares: {len(hill_coords)}")
     print("="*70)
     print("\nGenerated files:")
     print(f"  - {args.data} (square map data)")
