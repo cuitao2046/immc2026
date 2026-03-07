@@ -1,0 +1,12 @@
+{
+  "size": 120,
+  "season": "rainy",
+  "hour": 22,
+  "terrain_smooth_scale": 10.0,
+  "water_smooth_scale": 8.0,
+  "animal_smooth_scale": 6.0,
+  "output_dir": "maps",
+  "save_maps": true,
+  "save_data": true,
+  "map_format": "jpg"
+}

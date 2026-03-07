@@ -6,8 +6,9 @@ for terrain, water bodies, vegetation, roads, and animal distributions.
 """
 
 from typing import Tuple, Optional, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import os
+import json
 
 import numpy as np
 
@@ -58,6 +59,88 @@ class SpatialConfig:
     save_maps: bool = True
     save_data: bool = True
     map_format: str = "jpg"  # "jpg", "png", or "both"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert configuration to a dictionary.
+
+        Returns:
+            Dictionary containing all configuration values
+        """
+        return asdict(self)
+
+    def to_json(self, indent: int = 2) -> str:
+        """
+        Convert configuration to a JSON string.
+
+        Args:
+            indent: JSON indentation level
+
+        Returns:
+            JSON string
+        """
+        return json.dumps(self.to_dict(), indent=indent)
+
+    def save(self, filepath: str) -> None:
+        """
+        Save configuration to a JSON file.
+
+        Args:
+            filepath: Path to save the configuration file
+        """
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(self.to_json())
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SpatialConfig':
+        """
+        Create configuration from a dictionary.
+
+        Args:
+            data: Dictionary containing configuration values
+
+        Returns:
+            SpatialConfig object
+        """
+        return cls(**data)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> 'SpatialConfig':
+        """
+        Create configuration from a JSON string.
+
+        Args:
+            json_str: JSON string
+
+        Returns:
+            SpatialConfig object
+        """
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+
+    @classmethod
+    def load(cls, filepath: str) -> 'SpatialConfig':
+        """
+        Load configuration from a JSON file.
+
+        Args:
+            filepath: Path to the configuration file
+
+        Returns:
+            SpatialConfig object
+        """
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return cls.from_json(f.read())
+
+    @classmethod
+    def default(cls) -> 'SpatialConfig':
+        """
+        Create a configuration with default values.
+
+        Returns:
+            SpatialConfig object with default values
+        """
+        return cls()
 
 
 @dataclass
