@@ -22,16 +22,141 @@ generator = SpatialDataGenerator(config=config, seed=42)
 
 ### SpatialConfig 数据类
 
+#### 基本设置
+
 | 参数 | 类型 | 默认值 | 描述 |
 |-----------|------|---------|-------------|
 | `size` | int | 120 | 方形地图的大小（像素） |
 | `season` | str | "rainy" | 季节："rainy"（雨季）或 "dry"（旱季） |
 | `hour` | int | 22 | 一天中的小时（0-23） |
+| `output_dir` | str | "maps" | 保存地图的目录 |
+| `save_maps` | bool | True | 是否保存图片地图 |
+| `save_data` | bool | True | 是否保存原始数据（NumPy/CSV） |
+| `map_format` | str | "jpg" | 图片格式："jpg"、"png" 或 "both" |
+
+#### 平滑尺度
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
 | `terrain_smooth_scale` | float | 10.0 | 地形的高斯sigma值 |
 | `water_smooth_scale` | float | 8.0 | 水体的高斯sigma值 |
 | `animal_smooth_scale` | float | 6.0 | 动物分布的高斯sigma值 |
-| `output_dir` | str | "maps" | 保存地图的目录 |
-| `save_maps` | bool | True | 是否保存PNG地图 |
+
+#### 地形配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `terrain_threshold_lowland` | float | 0.3 | 低地分类阈值 |
+| `terrain_threshold_plain` | float | 0.55 | 平原分类阈值 |
+| `terrain_threshold_hill` | float | 0.75 | 丘陵分类阈值 |
+
+- 低于 `terrain_threshold_lowland` 的值 = 低地（0）
+- 阈值之间的值 = 平原（1）、丘陵（2）
+- 高于 `terrain_threshold_hill` 的值 = 山地（3）
+
+#### 水域配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `water_threshold` | float | 0.65 | 水体生成阈值 |
+
+- 值越小，水域越大
+- 水仅出现在低地区域
+
+#### 道路配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `num_roads` | int | 4 | 要生成的道路数量 |
+
+#### 水坑配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `waterhole_probability` | float | 0.02 | 水附近出现水坑的概率 |
+| `waterhole_search_range` | int | 2 | 搜索附近水源的范围（像素） |
+
+#### 物种配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `rhino_weight` | float | 0.5 | 犀牛在密度计算中的权重 |
+| `elephant_weight` | float | 0.3 | 大象在密度计算中的权重 |
+| `bird_weight` | float | 0.2 | 鸟类在密度计算中的权重 |
+| `rhino_season_multipliers` | tuple | (1.2, 1.0) | 季节乘数（雨季，旱季） |
+| `elephant_season_multipliers` | tuple | (1.3, 0.9) | 季节乘数（雨季，旱季） |
+| `bird_season_multipliers` | tuple | (1.5, 0.8) | 季节乘数（雨季，旱季） |
+
+权重之和必须为1.0。
+
+#### 火灾风险配置
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `fire_risk_by_vegetation` | tuple | (0.8, 0.6, 0.5, 0.2) | 按植被类型的火灾风险 |
+
+元组顺序：（草地，灌木，森林，湿地）
+
+#### 风险计算权重
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `risk_weight_human` | float | 0.4 | 人为风险组件的权重 |
+| `risk_weight_environmental` | float | 0.3 | 环境风险组件的权重 |
+| `risk_weight_density` | float | 0.3 | 动物密度组件的权重 |
+
+权重之和必须为1.0。
+
+#### 人为风险子权重
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `human_risk_weight_boundary` | float | 0.4 | 边界接近度的权重 |
+| `human_risk_weight_road` | float | 0.35 | 道路接近度的权重 |
+| `human_risk_weight_water` | float | 0.25 | 水源接近度的权重 |
+
+权重之和必须为1.0。
+
+#### 环境风险子权重
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `env_risk_weight_fire` | float | 0.6 | 火灾风险的权重 |
+| `env_risk_weight_terrain` | float | 0.4 | 地形复杂度的权重 |
+
+权重之和必须为1.0。
+
+#### 时间因子
+
+| 参数 | 类型 | 默认值 | 描述 |
+|-----------|------|---------|-------------|
+| `temporal_factor_night` | float | 1.3 | 夜间的风险乘数 |
+| `temporal_factor_day` | float | 1.0 | 白天的风险乘数 |
+| `temporal_factor_rainy` | float | 1.2 | 雨季的风险乘数 |
+| `temporal_factor_dry` | float | 1.0 | 旱季的风险乘数 |
+
+### 配置文件使用
+
+配置可以保存和从JSON文件加载：
+
+```python
+from risk_model.data import SpatialConfig
+
+# 创建并保存配置
+config = SpatialConfig(
+    size=120,
+    season="rainy",
+    hour=22,
+    num_roads=6,
+    waterhole_probability=0.05
+)
+config.save("my_config.json")
+
+# 从文件加载
+loaded_config = SpatialConfig.load("my_config.json")
+```
+
+完整模板请参见 `config_example.json`。
 
 ## 生成的地图
 
@@ -49,8 +174,8 @@ generator = SpatialDataGenerator(config=config, seed=42)
 | 3 | 山地 | 高海拔，森林覆盖 |
 
 **生成方法：**
-- 使用高斯滤波器（σ=10.0）平滑随机噪声
-- 在0.3、0.55、0.75处进行阈值分类
+- 使用高斯滤波器平滑随机噪声（默认σ=10.0）
+- 使用 `terrain_threshold_*` 配置值进行阈值分类
 
 ### 2. 水体图 (`water`)
 
@@ -63,8 +188,8 @@ generator = SpatialDataGenerator(config=config, seed=42)
 
 **生成约束：**
 - 仅出现在低地区域（terrain == 0）
-- 使用σ=8.0的平滑噪声
-- 阈值设为0.65
+- 使用σ=8.0的平滑噪声（默认）
+- 使用 `water_threshold` 配置进行阈值处理
 
 ### 3. 植被图 (`vegetation`)
 
@@ -88,7 +213,7 @@ generator = SpatialDataGenerator(config=config, seed=42)
 | 1 | 道路 |
 
 **生成算法：**
-- 从上到下创建4条道路
+- 从上到下创建 `num_roads` 条道路
 - 随机游走，横向移动±1或0
 - 避开水体
 - 自然蜿蜒的路径外观
@@ -103,8 +228,8 @@ generator = SpatialDataGenerator(config=config, seed=42)
 | 1 | 水坑 |
 
 **放置规则：**
-- 必须在水体2像素范围内
-- 每个符合条件的位置有2%的概率
+- 必须在 `waterhole_search_range` 像素范围内有水源
+- 每个符合条件的位置有 `waterhole_probability` 的概率
 - 不在水中
 
 ### 6. 动物密度图
@@ -113,33 +238,36 @@ generator = SpatialDataGenerator(config=config, seed=42)
 
 #### 犀牛密度 (`rhino`)
 - 偏好草原（vegetation == 1）
-- 使用σ=6.0的平滑噪声
+- 使用σ=6.0的平滑噪声（默认）
 - 非草原区域为零
 
 #### 大象密度 (`elephant`)
 - 偏好草原和森林（vegetation == 1或3）
-- 使用σ=6.0的平滑噪声
+- 使用σ=6.0的平滑噪声（默认）
 - 其他区域为零
 
 #### 鸟类密度 (`bird`)
 - 偏好湿地（vegetation == 4）
-- 使用σ=6.0的平滑噪声
+- 使用σ=6.0的平滑噪声（默认）
 - 非湿地区域为零
 
 #### 总动物密度 (`animal_density`)
-- 总和：`rhino + elephant + bird`
+- 使用 `rhino_weight`、`elephant_weight`、`bird_weight` 进行加权求和
+- 应用季节乘数
 - 不归一化以保持相对丰度
 
 ### 7. 火灾风险图 (`fire_risk`)
 
 基于植被类型的火灾风险。
 
-| 植被 | 火灾风险 |
+| 植被 | 默认火灾风险 |
 |------------|-----------|
 | 草原 (1) | 0.8 |
 | 灌木 (2) | 0.6 |
 | 森林 (3) | 0.5 |
 | 湿地 (4) | 0.2 |
+
+可通过 `fire_risk_by_vegetation` 配置。
 
 ### 8. 距离图
 
@@ -161,21 +289,29 @@ generator = SpatialDataGenerator(config=config, seed=42)
 
 归一化后的最终风险指数，范围[0, 1]。
 
-**计算公式：**
+**计算公式（可配置权重）：**
 
 ```
-人为风险 (H) = 0.4 * (1/(d_boundary+1))
-               + 0.35 * (1/(d_road+1))
-               + 0.25 * (1/(d_water+1))
+人为风险 (H) = human_risk_weight_boundary * (1 - 归一化边界距离)
+              + human_risk_weight_road * (1 - 归一化道路距离)
+              + human_risk_weight_water * (1 - 归一化水源距离)
 
-环境风险 (E) = 0.6 * fire_risk + 0.4 * (terrain/3)
+环境风险 (E) = env_risk_weight_fire * 火灾风险
+              + env_risk_weight_terrain * (地形/3)
 
-密度值 (D) = 0.5 * rhino + 0.3 * elephant + 0.2 * bird
+密度值 (D) = rhino_weight * 犀牛 * 犀牛季节乘数
+            + elephant_weight * 大象 * 大象季节乘数
+            + bird_weight * 鸟类 * 鸟类季节乘数
 
-时间因子 (T) = 1.3（如果 hour < 6 或 hour > 18）否则为 1.0
-季节因子 (S) = 1.2（如果 season == "rainy"）否则为 1.0
+时间因子 (T) = 如果 hour < 6 或 hour > 18 则为 temporal_factor_night
+              否则为 temporal_factor_day
 
-原始风险 = (0.4*H + 0.3*E + 0.3*D) * T * S
+季节因子 (S) = 如果 season == "rainy" 则为 temporal_factor_rainy
+              否则为 temporal_factor_dry
+
+原始风险 = (risk_weight_human * H
+          + risk_weight_environmental * E
+          + risk_weight_density * D) * T * S
 
 风险图 = 将原始风险归一化到 [0, 1]
 ```
@@ -204,6 +340,28 @@ maps = generator.generate()
 print(f"风险图形状: {maps.risk_map.shape}")
 print(f"最大风险: {maps.risk_map.max()}")
 print(f"最小风险: {maps.risk_map.min()}")
+```
+
+### 自定义配置示例
+
+```python
+# 侧重鸟类保护并带有大量水坑的配置
+config = SpatialConfig(
+    size=100,
+    season="rainy",
+    hour=6,
+    num_roads=3,
+    waterhole_probability=0.08,
+    waterhole_search_range=3,
+    rhino_weight=0.2,
+    elephant_weight=0.2,
+    bird_weight=0.6,
+    bird_season_multipliers=(2.0, 1.0),
+    temporal_factor_night=1.5
+)
+
+generator = SpatialDataGenerator(config=config, seed=42)
+maps = generator.generate()
 ```
 
 ### 访问特定数据
@@ -241,17 +399,58 @@ for hour in [0, 6, 12, 18]:
 
 ## 输出文件
 
-当 `save_maps=True` 时，会生成以下PNG文件：
+### 图片地图
+
+当 `save_maps=True` 时，会生成以下图片文件：
 
 | 文件名 | 颜色映射 | 描述 |
 |----------|----------|-------------|
-| `terrain_map.png` | terrain | 4级地形分类 |
-| `water_map.png` | Blues | 水体 |
-| `vegetation_map.png` | Greens | 植被类型 |
-| `roads_map.png` | gray | 道路网络 |
-| `waterholes_map.png` | Blues | 水坑位置 |
-| `animal_density_map.png` | YlGn | 组合动物密度 |
-| `risk_map.png` | hot | 带有色标的最终风险热力图 |
+| `01_terrain.*` | terrain | 4级地形分类 |
+| `01a_lowland.*` | Blues | 低地分布蒙版 |
+| `01b_plain.*` | YlGn | 平原分布蒙版 |
+| `01c_hill.*` | BrBG | 丘陵分布蒙版 |
+| `01d_mountain.*` | terrain | 山地分布蒙版 |
+| `02_water_bodies.*` | Blues | 永久水体 |
+| `02a_water_only.*` | Blues | 水体分布蒙版 |
+| `03_waterholes.*` | Blues | 水坑位置 |
+| `04_vegetation.*` | Greens | 植被类型 |
+| `04a_grassland.*` | YlGn | 草原分布蒙版 |
+| `04b_shrubland.*` | Greens | 灌木分布蒙版 |
+| `04c_forest.*` | viridis | 森林分布蒙版 |
+| `04d_wetland.*` | Blues | 湿地分布蒙版 |
+| `05_roads.*` | gray | 道路网络 |
+| `06_fire_risk.*` | YlOrRd | 火灾风险指数 |
+| `07a_rhino_density.*` | YlGn | 犀牛密度分布 |
+| `07b_elephant_density.*` | YlGn | 大象密度分布 |
+| `07c_bird_density.*` | YlGnBu | 鸟类密度分布 |
+| `07_total_animal_density.*` | YlGn | 组合动物密度 |
+| `08_risk_index.*` | hot | 带有色标的最终风险热力图 |
+
+### 原始数据文件
+
+当 `save_data=True` 时，以下文件保存在 `data/` 目录中：
+
+| 文件 | 描述 |
+|------|-------------|
+| `terrain.npy` | 地形分类图 |
+| `water.npy` | 水体图 |
+| `vegetation.npy` | 植被图 |
+| `roads.npy` | 道路图 |
+| `waterholes.npy` | 水坑图 |
+| `rhino.npy` | 犀牛密度图 |
+| `elephant.npy` | 大象密度图 |
+| `bird.npy` | 鸟类密度图 |
+| `animal_density.npy` | 总动物密度 |
+| `fire_risk.npy` | 火灾风险图 |
+| `distance_to_road.npy` | 到道路的距离图 |
+| `distance_to_water.npy` | 到水坑的距离图 |
+| `distance_to_boundary.npy` | 到边界的距离图 |
+| `risk_map.npy` | 风险指数图 |
+| `config.json` | 完整的生成配置 |
+
+### CSV文件
+
+CSV版本也保存在 `csv/` 目录中以便查看。
 
 ## 依赖项
 
@@ -277,6 +476,7 @@ for hour in [0, 6, 12, 18]:
 2. **生态约束**：动物被限制在合适的植被类型中
 3. **水文逻辑**：水只出现在低地，水坑靠近水体
 4. **时间变化**：风险随一天中的时间和季节变化
+5. **可配置权重**：模型的所有方面都可以通过配置进行自定义
 
 ## 扩展点
 
@@ -285,7 +485,7 @@ for hour in [0, 6, 12, 18]:
 1. 继承 `SpatialDataGenerator`
 2. 重写特定的 `generate_*` 方法
 3. 向 `SpatialMaps` 数据类添加新的地图类型
-4. 调整 `calculate_risk()` 中的权重
+4. 使用配置选项调整行为而无需更改代码
 
 示例：
 ```python

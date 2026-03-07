@@ -49,16 +49,67 @@ except ImportError:
 @dataclass
 class SpatialConfig:
     """Configuration for spatial data generation."""
+    # Basic settings
     size: int = 120
     season: str = "rainy"
     hour: int = 22
-    terrain_smooth_scale: float = 10.0
-    water_smooth_scale: float = 8.0
-    animal_smooth_scale: float = 6.0
     output_dir: str = "maps"
     save_maps: bool = True
     save_data: bool = True
     map_format: str = "jpg"  # "jpg", "png", or "both"
+
+    # Smoothing scales
+    terrain_smooth_scale: float = 10.0
+    water_smooth_scale: float = 8.0
+    animal_smooth_scale: float = 6.0
+
+    # Terrain thresholds (for terrain classification)
+    terrain_threshold_lowland: float = 0.3
+    terrain_threshold_plain: float = 0.55
+    terrain_threshold_hill: float = 0.75
+
+    # Water settings
+    water_threshold: float = 0.65  # Threshold for water body generation
+
+    # Road settings
+    num_roads: int = 4  # Number of roads to generate
+
+    # Waterhole settings
+    waterhole_probability: float = 0.02  # Probability of waterhole near water
+    waterhole_search_range: int = 2  # Search range for nearby water (pixels)
+
+    # Species density weights
+    rhino_weight: float = 0.5
+    elephant_weight: float = 0.3
+    bird_weight: float = 0.2
+
+    # Species seasonal multipliers (rainy, dry)
+    rhino_season_multipliers: tuple = (1.2, 1.0)
+    elephant_season_multipliers: tuple = (1.3, 0.9)
+    bird_season_multipliers: tuple = (1.5, 0.8)
+
+    # Fire risk by vegetation type (grass, shrub, forest, wetland)
+    fire_risk_by_vegetation: tuple = (0.8, 0.6, 0.5, 0.2)
+
+    # Risk weights
+    risk_weight_human: float = 0.4
+    risk_weight_environmental: float = 0.3
+    risk_weight_density: float = 0.3
+
+    # Human risk weights
+    human_risk_weight_boundary: float = 0.4
+    human_risk_weight_road: float = 0.35
+    human_risk_weight_water: float = 0.25
+
+    # Environmental risk weights
+    env_risk_weight_fire: float = 0.6
+    env_risk_weight_terrain: float = 0.4
+
+    # Temporal factors
+    temporal_factor_night: float = 1.3
+    temporal_factor_day: float = 1.0
+    temporal_factor_rainy: float = 1.2
+    temporal_factor_dry: float = 1.0
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -208,10 +259,12 @@ class SpatialDataGenerator:
         """
         terrain_noise = smooth_random(self.config.size, self.config.terrain_smooth_scale)
         terrain = np.zeros((self.config.size, self.config.size), dtype=int)
-        terrain[terrain_noise < 0.3] = 0
-        terrain[(terrain_noise >= 0.3) & (terrain_noise < 0.55)] = 1
-        terrain[(terrain_noise >= 0.55) & (terrain_noise < 0.75)] = 2
-        terrain[terrain_noise >= 0.75] = 3
+        terrain[terrain_noise < self.config.terrain_threshold_lowland] = 0
+        terrain[(terrain_noise >= self.config.terrain_threshold_lowland) &
+                (terrain_noise < self.config.terrain_threshold_plain)] = 1
+        terrain[(terrain_noise >= self.config.terrain_threshold_plain) &
+                (terrain_noise < self.config.terrain_threshold_hill)] = 2
+        terrain[terrain_noise >= self.config.terrain_threshold_hill] = 3
         return terrain
 
     def generate_water(self, terrain: np.ndarray) -> np.ndarray:
@@ -226,7 +279,7 @@ class SpatialDataGenerator:
         """
         water_noise = smooth_random(self.config.size, self.config.water_smooth_scale)
         water = np.zeros((self.config.size, self.config.size), dtype=int)
-        water[(water_noise > 0.65) & (terrain == 0)] = 1
+        water[(water_noise > self.config.water_threshold) & (terrain == 0)] = 1
         return water
 
     def generate_vegetation(self, terrain: np.ndarray, water: np.ndarray) -> np.ndarray:
@@ -254,20 +307,19 @@ class SpatialDataGenerator:
                     vegetation[i, j] = 3
         return vegetation
 
-    def generate_roads(self, water: np.ndarray, num_roads: int = 4) -> np.ndarray:
+    def generate_roads(self, water: np.ndarray) -> np.ndarray:
         """
         Generate road network.
 
         Args:
             water: Water map (roads avoid water)
-            num_roads: Number of roads to generate
 
         Returns:
             Road map (1 = road, 0 = no road)
         """
         roads = np.zeros((self.config.size, self.config.size), dtype=int)
 
-        for _ in range(num_roads):
+        for _ in range(self.config.num_roads):
             x = np.random.randint(0, self.config.size)
             y = 0
 
@@ -283,25 +335,25 @@ class SpatialDataGenerator:
 
         return roads
 
-    def generate_waterholes(self, water: np.ndarray, probability: float = 0.02) -> np.ndarray:
+    def generate_waterholes(self, water: np.ndarray) -> np.ndarray:
         """
         Generate waterholes near water bodies.
 
         Args:
             water: Water map
-            probability: Probability of waterhole near water
 
         Returns:
             Waterholes map (1 = waterhole, 0 = no waterhole)
         """
         waterholes = np.zeros((self.config.size, self.config.size), dtype=int)
+        search_range = self.config.waterhole_search_range
 
         for i in range(self.config.size):
             for j in range(self.config.size):
                 if water[i, j] == 0:
                     near_water = False
-                    for dx in range(-2, 3):
-                        for dy in range(-2, 3):
+                    for dx in range(-search_range, search_range + 1):
+                        for dy in range(-search_range, search_range + 1):
                             xi = i + dx
                             yj = j + dy
                             if 0 <= xi < self.config.size and 0 <= yj < self.config.size:
@@ -311,7 +363,7 @@ class SpatialDataGenerator:
                         if near_water:
                             break
 
-                    if near_water and np.random.random() < probability:
+                    if near_water and np.random.random() < self.config.waterhole_probability:
                         waterholes[i, j] = 1
 
         return waterholes
@@ -353,10 +405,10 @@ class SpatialDataGenerator:
             Fire risk map [0, 1]
         """
         fire_risk = np.zeros((self.config.size, self.config.size))
-        fire_risk[vegetation == 1] = 0.8
-        fire_risk[vegetation == 2] = 0.6
-        fire_risk[vegetation == 3] = 0.5
-        fire_risk[vegetation == 4] = 0.2
+        fire_risk[vegetation == 1] = self.config.fire_risk_by_vegetation[0]  # grass
+        fire_risk[vegetation == 2] = self.config.fire_risk_by_vegetation[1]  # shrub
+        fire_risk[vegetation == 3] = self.config.fire_risk_by_vegetation[2]  # forest
+        fire_risk[vegetation == 4] = self.config.fire_risk_by_vegetation[3]  # wetland
         return fire_risk
 
     def calculate_distances(
@@ -428,19 +480,20 @@ class SpatialDataGenerator:
         """
         risk = np.zeros((self.config.size, self.config.size))
 
-        # Time factors - same as main model
-        t_factor = 1.3 if (self.config.hour < 6 or self.config.hour > 18) else 1.0
-        s_factor = 1.2 if self.config.season == "rainy" else 1.0
+        # Time factors from configuration
+        is_night = self.config.hour < 6 or self.config.hour > 18
+        t_factor = self.config.temporal_factor_night if is_night else self.config.temporal_factor_day
+        s_factor = self.config.temporal_factor_rainy if self.config.season == "rainy" else self.config.temporal_factor_dry
 
-        # Seasonal multipliers for species - same as main model defaults
+        # Seasonal multipliers for species from configuration
         if self.config.season == "rainy":
-            rhino_mult = 1.2
-            elephant_mult = 1.3
-            bird_mult = 1.5
+            rhino_mult = self.config.rhino_season_multipliers[0]
+            elephant_mult = self.config.elephant_season_multipliers[0]
+            bird_mult = self.config.bird_season_multipliers[0]
         else:
-            rhino_mult = 1.0
-            elephant_mult = 0.9
-            bird_mult = 0.8
+            rhino_mult = self.config.rhino_season_multipliers[1]
+            elephant_mult = self.config.elephant_season_multipliers[1]
+            bird_mult = self.config.bird_season_multipliers[1]
 
         # Max distances for normalization - same as adapter
         max_boundary_dist = self.config.size / 2
@@ -449,26 +502,30 @@ class SpatialDataGenerator:
 
         for i in range(self.config.size):
             for j in range(self.config.size):
-                # Human risk - same as main model: 1 - normalized_distance
+                # Human risk - using configured weights
                 d_boundary_norm = min(d_boundary[i, j] / max_boundary_dist, 1.0)
                 d_road_norm = min(d_road[i, j] / max_road_dist, 1.0)
                 d_water_norm = min(d_water[i, j] / max_water_dist, 1.0)
 
-                # Proximity = 1 - normalized_distance (same as Grid.proximity_score)
-                h = (0.4 * (1.0 - d_boundary_norm) +
-                     0.35 * (1.0 - d_road_norm) +
-                     0.25 * (1.0 - d_water_norm))
+                # Proximity = 1 - normalized_distance
+                h = (self.config.human_risk_weight_boundary * (1.0 - d_boundary_norm) +
+                     self.config.human_risk_weight_road * (1.0 - d_road_norm) +
+                     self.config.human_risk_weight_water * (1.0 - d_water_norm))
 
-                # Environmental risk - same as main model
+                # Environmental risk - using configured weights
                 terrain_diff = terrain[i, j] / 3
-                e = 0.6 * fire_risk[i, j] + 0.4 * terrain_diff
+                e = (self.config.env_risk_weight_fire * fire_risk[i, j] +
+                     self.config.env_risk_weight_terrain * terrain_diff)
 
-                # Density value with seasonal multipliers - same as main model
-                d = (0.5 * rhino[i, j] * rhino_mult +
-                     0.3 * elephant[i, j] * elephant_mult +
-                     0.2 * bird[i, j] * bird_mult)
+                # Density value with seasonal multipliers - using configured species weights
+                d = (self.config.rhino_weight * rhino[i, j] * rhino_mult +
+                     self.config.elephant_weight * elephant[i, j] * elephant_mult +
+                     self.config.bird_weight * bird[i, j] * bird_mult)
 
-                risk[i, j] = (0.4 * h + 0.3 * e + 0.3 * d) * t_factor * s_factor
+                # Combine with risk weights
+                risk[i, j] = (self.config.risk_weight_human * h +
+                              self.config.risk_weight_environmental * e +
+                              self.config.risk_weight_density * d) * t_factor * s_factor
 
         return normalize(risk)
 
@@ -689,18 +746,10 @@ class SpatialDataGenerator:
         np.savetxt(os.path.join(csv_dir, "water.csv"), maps.water, delimiter=",", fmt="%d")
         np.savetxt(os.path.join(csv_dir, "vegetation.csv"), maps.vegetation, delimiter=",", fmt="%d")
 
-        # Save configuration
+        # Save full configuration
         import json
-        config_dict = {
-            "size": maps.config.size,
-            "season": maps.config.season,
-            "hour": maps.config.hour,
-            "terrain_smooth_scale": maps.config.terrain_smooth_scale,
-            "water_smooth_scale": maps.config.water_smooth_scale,
-            "animal_smooth_scale": maps.config.animal_smooth_scale,
-        }
         with open(os.path.join(data_dir, "config.json"), "w") as f:
-            json.dump(config_dict, f, indent=2)
+            f.write(maps.config.to_json())
 
     def _save_readme(self, maps: SpatialMaps) -> None:
         """
