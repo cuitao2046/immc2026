@@ -29,6 +29,7 @@ riskIndex/
 ├── plots/                 # 生成的图表
 ├── demo_phase*.py         # 阶段演示脚本
 ├── risk_model_wrapper.py   # JSON文件输入输出的Wrapper脚本
+├── generate_hex_map.py   # 六边形网格地图生成器
 ├── example_data.json     # 示例输入数据
 ├── example_config.json   # 示例配置
 └── example_results.json  # 示例输出结果
@@ -128,6 +129,51 @@ python3 demo_phase6.py
   }
 }
 ```
+
+## 六边形网格地图生成器
+
+生成矩形边界的六边形网格地图，包含弯曲道路和水源特征。
+
+### 基本用法
+
+```bash
+# 使用默认设置生成地图（15列 × 12行）
+python3 generate_hex_map.py
+```
+
+### 命令行参数
+
+| 参数 | 简写 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--cols` | `-c` | 15 | 六边形网格列数 |
+| `--rows` | `-r` | 12 | 六边形网格行数 |
+| `--data` | `-d` | rect_hex_map_data.json | 输出JSON数据文件路径 |
+| `--map-image` | `-m` | rect_hex_map_features.jpg | 输出地图特征图路径 |
+| `--help` | `-h` | - | 显示帮助信息 |
+
+### 使用示例
+
+```bash
+# 显示帮助
+python3 generate_hex_map.py --help
+
+# 生成20列×15行的地图
+python3 generate_hex_map.py --cols 20 --rows 15
+
+# 自定义输出文件名
+python3 generate_hex_map.py --cols 25 --rows 18 --data my_map.json --map-image my_map.jpg
+
+# 使用简写参数
+python3 generate_hex_map.py -c 20 -r 15 -d output.json
+```
+
+### 特性
+
+- **矩形边界**：六边形网格具有矩形外边界
+- **弯曲道路**：随机游走生成的道路，支持分支
+- **水源特征**：池塘 + 蜿蜒河流
+- **无网格边框**：隐藏六边形边框（linewidth=0）
+- **Even-Q偏移坐标**：使用偏移坐标实现矩形网格布局
 
 ## 模型概述
 

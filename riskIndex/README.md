@@ -29,6 +29,7 @@ riskIndex/
 ├── plots/                 # Generated plots
 ├── demo_phase*.py         # Phase demonstration scripts
 ├── risk_model_wrapper.py   # Wrapper script for JSON file I/O
+├── generate_hex_map.py   # Hexagon grid map generator
 ├── example_data.json     # Example input data
 ├── example_config.json   # Example configuration
 └── example_results.json  # Example output results
@@ -128,6 +129,51 @@ The model uses a grid-based coordinate system:
   }
 }
 ```
+
+## Hexagon Map Generator
+
+Generate rectangular hexagon grid maps with curved roads and water features.
+
+### Basic Usage
+
+```bash
+# Generate map with default settings (15 cols × 12 rows)
+python3 generate_hex_map.py
+```
+
+### Command Line Arguments
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--cols` | `-c` | 15 | Number of columns in hex grid |
+| `--rows` | `-r` | 12 | Number of rows in hex grid |
+| `--data` | `-d` | rect_hex_map_data.json | Output JSON data file path |
+| `--map-image` | `-m` | rect_hex_map_features.jpg | Output map features image path |
+| `--help` | `-h` | - | Show help message |
+
+### Examples
+
+```bash
+# Show help
+python3 generate_hex_map.py --help
+
+# Generate 20 cols × 15 rows map
+python3 generate_hex_map.py --cols 20 --rows 15
+
+# Custom output file names
+python3 generate_hex_map.py --cols 25 --rows 18 --data my_map.json --map-image my_map.jpg
+
+# Using short options
+python3 generate_hex_map.py -c 20 -r 15 -d output.json
+```
+
+### Features
+
+- **Rectangular Boundary**: Hexagon grid with rectangular outer boundary
+- **Curved Roads**: Random walk generated roads with branching
+- **Water Features**: Ponds + winding river
+- **No Grid Borders**: Hexagon borders are hidden (linewidth=0)
+- **Even-Q Offset Coordinates**: Uses offset coordinates for rectangular grid layout
 
 ## Model Overview
 

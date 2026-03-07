@@ -774,7 +774,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Rectangular Hexagon Map Generator - Generate hex grid maps with risk heatmaps"
+        description="Rectangular Hexagon Map Generator - Generate hex grid map data"
     )
     parser.add_argument(
         "--cols", "-c",
@@ -800,12 +800,6 @@ def main():
         default="rect_hex_map_features.jpg",
         help="Output map features image path (default: rect_hex_map_features.jpg)"
     )
-    parser.add_argument(
-        "--heatmap", "-t",
-        type=str,
-        default="rect_hex_risk_heatmap.jpg",
-        help="Output risk heatmap image path (default: rect_hex_risk_heatmap.jpg)"
-    )
 
     args = parser.parse_args()
 
@@ -814,7 +808,7 @@ def main():
     print("="*70)
 
     # Generate data
-    print(f"\n[1/4] Generating rectangular hex map data: {args.cols} cols × {args.rows} rows...")
+    print(f"\n[1/2] Generating rectangular hex map data: {args.cols} cols × {args.rows} rows...")
     data, hex_coords, road_hexes, water_hexes = generate_rectangular_hex_map_data(
         num_cols=args.cols,
         num_rows=args.rows,
@@ -822,33 +816,21 @@ def main():
     )
 
     # Visualize map features
-    print(f"\n[2/4] Visualizing rectangular hex map to: {args.map_image}")
+    print(f"\n[2/2] Visualizing rectangular hex map to: {args.map_image}")
     visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, args.map_image)
-
-    # Calculate risk
-    print("\n[3/4] Calculating risk...")
-    results = calculate_risk_for_rect_hex_map(data, hex_coords, road_hexes, water_hexes)
-
-    # Visualize risk heatmap
-    print(f"\n[4/4] Visualizing risk heatmap to: {args.heatmap}")
-    visualize_rect_risk_heatmap(data, hex_coords, road_hexes, water_hexes, results, args.heatmap)
 
     # Print summary
     print("\n" + "="*70)
     print("  SUMMARY")
     print("="*70)
-    norm_risks = [r.normalized_risk for r in results if r.normalized_risk is not None]
-    if norm_risks:
-        print(f"  Min risk: {min(norm_risks):.4f}")
-        print(f"  Max risk: {max(norm_risks):.4f}")
-        print(f"  Avg risk: {sum(norm_risks)/len(norm_risks):.4f}")
-        high_risk = sum(1 for r in norm_risks if r > 0.7)
-        print(f"  High risk cells (>0.7): {high_risk}/{len(norm_risks)}")
+    print(f"  Grid size: {args.cols} cols × {args.rows} rows")
+    print(f"  Total hexagons: {len(hex_coords)}")
+    print(f"  Road hexagons: {len(road_hexes)}")
+    print(f"  Water hexagons: {len(water_hexes)}")
     print("="*70)
     print("\nGenerated files:")
-    print("  - rect_hex_map_data.json (rectangular hex map data)")
-    print("  - rect_hex_map_features.jpg (map visualization)")
-    print("  - rect_hex_risk_heatmap.jpg (risk heatmap)")
+    print(f"  - {args.data} (rectangular hex map data)")
+    print(f"  - {args.map_image} (map visualization)")
 
 
 if __name__ == "__main__":
