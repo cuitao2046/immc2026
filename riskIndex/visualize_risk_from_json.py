@@ -7,7 +7,7 @@ import sys
 import os
 import json
 import argparse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -23,6 +23,90 @@ def load_results_from_json(filepath: str) -> Dict[str, Any]:
     """Load risk calculation results from JSON file."""
     with open(filepath, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+
+def get_relative_luminance(r: float, g: float, b: float) -> float:
+    """
+    Calculate relative luminance of a color (sRGB).
+    Uses WCAG formula: https://www.w3.org/WAI/WCAG21/Techniques/general/G17.html
+
+    Args:
+        r, g, b: Color values in [0, 1] range
+
+    Returns:
+        Relative luminance value
+    """
+    def linearize(v: float) -> float:
+        if v <= 0.03928:
+            return v / 12.92
+        else:
+            return ((v + 0.055) / 1.055) ** 2.4
+
+    r_lin = linearize(r)
+    g_lin = linearize(g)
+    b_lin = linearize(b)
+
+    return 0.2126 * r_lin + 0.7152 * g_lin + 0.0722 * b_lin
+
+
+def get_contrast_color(facecolor: Tuple[float, float, float]) -> str:
+    """
+    Get the color (black or white) that has maximum contrast with the given facecolor.
+
+    Args:
+        facecolor: RGB tuple with values in [0, 1] range
+
+    Returns:
+        'black' or 'white', whichever has better contrast
+    """
+    luminance = get_relative_luminance(facecolor[0], facecolor[1], facecolor[2])
+
+    # Compare with white (luminance 1.0) and black (luminance 0.0)
+    # Using simplified contrast check: if luminance < 0.5, white is better; else black
+    # This gives maximum contrast for most cases
+    return 'white' if luminance < 0.5 else 'black'
+
+
+def calculate_font_size(num_cols: int, num_rows: int) -> int:
+    """
+    Calculate appropriate font size based on grid dimensions.
+
+    Args:
+        num_cols: Number of columns
+        num_rows: Number of rows
+
+    Returns:
+        Font size in points
+    """
+    total_grids = num_cols * num_rows
+
+    if total_grids <= 25:
+        return 24
+    elif total_grids <= 100:
+        return 16
+    elif total_grids <= 400:
+        return 10
+    elif total_grids <= 1000:
+        return 7
+    else:
+        return 5
+
+
+def calculate_figure_size(num_cols: int, num_rows: int) -> Tuple[float, float]:
+    """
+    Calculate appropriate figure size based on grid dimensions.
+
+    Args:
+        num_cols: Number of columns
+        num_rows: Number of rows
+
+    Returns:
+        Tuple of (width, height) in inches
+    """
+    base_size = 1.0
+    width = max(10, num_cols * base_size + 4)
+    height = max(8, num_rows * base_size + 3)
+    return (width, height)
 
 
 def visualize_risk_heatmap_square(
@@ -89,10 +173,22 @@ def visualize_risk_heatmap_square(
             num_rows = int(np.ceil(n / num_cols))
             print(f"Warning: Grid size not specified. Using {num_cols} cols × {num_rows} rows.")
 
-    # Create risk grid
+    # Create risk grid and store face colors for each grid
     risk_grid = np.full((num_rows, num_cols), np.nan)
     grid_data = {}
+    face_colors = {}
 
+    # Custom colormap
+    colors = [
+        (0.0, '#00aa00'),   # Green - low risk
+        (0.3, '#88cc00'),
+        (0.5, '#ffff00'),   # Yellow - medium risk
+        (0.7, '#ff8800'),
+        (1.0, '#ff0000')    # Red - high risk
+    ]
+    cmap = LinearSegmentedColormap.from_list('risk_gradient', colors)
+
+    # First pass: collect all data and calculate face colors
     for idx, result in enumerate(results):
         grid_id = result.get("grid_id", f"G{idx:04d}")
         norm_risk = result.get("normalized_risk", 0.0)
@@ -124,19 +220,29 @@ def visualize_risk_heatmap_square(
                 "risk": norm_risk
             }
 
-    # Create visualization
-    square_size = 1.0
-    fig, ax = plt.subplots(figsize=(18, 14), dpi=100)
+            # Calculate face color for this grid
+            is_road = (x, y) in road_coords
+            is_water = (x, y) in water_coords
+            base_color = cmap(norm_risk)
 
-    # Custom colormap
-    colors = [
-        (0.0, '#00aa00'),   # Green - low risk
-        (0.3, '#88cc00'),
-        (0.5, '#ffff00'),   # Yellow - medium risk
-        (0.7, '#ff8800'),
-        (1.0, '#ff0000')    # Red - high risk
-    ]
-    cmap = LinearSegmentedColormap.from_list('risk_gradient', colors)
+            if show_features and is_water:
+                water_color = (0.3, 0.6, 1.0, 1.0)
+                facecolor = tuple(0.4 * water_color[i] + 0.6 * base_color[i] for i in range(3))
+            elif show_features and is_road:
+                road_color = (0.7, 0.55, 0.4, 1.0)
+                facecolor = tuple(0.4 * road_color[i] + 0.6 * base_color[i] for i in range(3))
+            else:
+                facecolor = base_color[:3]  # Take only RGB, not alpha
+
+            face_colors[(x, y)] = facecolor
+
+    # Calculate visualization parameters
+    square_size = 1.0
+    fig_size = calculate_figure_size(num_cols, num_rows)
+    font_size = calculate_font_size(num_cols, num_rows)
+
+    # Create visualization
+    fig, ax = plt.subplots(figsize=fig_size, dpi=100)
 
     patches = []
 
@@ -147,23 +253,8 @@ def visualize_risk_heatmap_square(
             if np.isnan(risk):
                 continue
 
-            # Get feature info
-            is_road = (x, y) in road_coords
-            is_water = (x, y) in water_coords
-
-            # Determine color
-            base_color = cmap(risk)
-
-            if show_features and is_water:
-                # Mix blue with risk color
-                water_color = (0.3, 0.6, 1.0, 1.0)
-                facecolor = tuple(0.4 * water_color[i] + 0.6 * base_color[i] for i in range(3))
-            elif show_features and is_road:
-                # Mix brown with risk color
-                road_color = (0.7, 0.55, 0.4, 1.0)
-                facecolor = tuple(0.4 * road_color[i] + 0.6 * base_color[i] for i in range(3))
-            else:
-                facecolor = base_color
+            # Get pre-calculated face color
+            facecolor = face_colors.get((x, y), cmap(risk)[:3])
 
             # Create square patch
             square_patch = Rectangle(
@@ -184,12 +275,10 @@ def visualize_risk_heatmap_square(
     if show_labels:
         for (x, y), data in grid_data.items():
             risk = data["risk"]
+            facecolor = face_colors.get((x, y), (0.5, 0.5, 0.5))
 
-            # Choose text color for contrast
-            if risk < 0.3 or risk > 0.7:
-                text_color = 'white'
-            else:
-                text_color = 'black'
+            # Get contrast color (black or white) based on facecolor
+            text_color = get_contrast_color(facecolor)
 
             ax.text(
                 x * square_size,
@@ -198,7 +287,7 @@ def visualize_risk_heatmap_square(
                 ha='center',
                 va='center',
                 color=text_color,
-                fontsize=7,
+                fontsize=font_size,
                 fontweight='bold'
             )
 
@@ -259,9 +348,21 @@ def main():
         help="Output heatmap image path (default: risk_heatmap_from_json.jpg)"
     )
     parser.add_argument(
+        "--show-labels",
+        action="store_true",
+        default=True,
+        help="Show risk value labels on heatmap (default: True)"
+    )
+    parser.add_argument(
         "--no-labels",
         action="store_true",
         help="Hide risk value labels on heatmap"
+    )
+    parser.add_argument(
+        "--show-features",
+        action="store_true",
+        default=True,
+        help="Show road/water feature overlays (default: True)"
     )
     parser.add_argument(
         "--no-features",
@@ -270,6 +371,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Determine final flag values
+    show_labels = args.show_labels and not args.no_labels
+    show_features = args.show_features and not args.no_features
 
     print("="*70)
     print("  RISK HEATMAP VISUALIZER")
@@ -291,12 +396,13 @@ def main():
 
     # Generate heatmap
     print(f"\n[3/3] Generating heatmap to: {args.output}")
+    print(f"  Settings: labels={'ON' if show_labels else 'OFF'}, features={'ON' if show_features else 'OFF'}")
     visualize_risk_heatmap_square(
         results_data,
         input_data=input_data,
         output_path=args.output,
-        show_labels=not args.no_labels,
-        show_features=not args.no_features
+        show_labels=show_labels,
+        show_features=show_features
     )
 
     print("\n" + "="*70)
