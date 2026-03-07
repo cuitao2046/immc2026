@@ -377,7 +377,6 @@ def visualize_risk_heatmap_square(
                 square_size,
                 square_size,
                 facecolor=facecolor,
-                edgecolor=[0.5, 0.5, 0.5],
                 linewidth=0
             )
             patches.append(square_patch)
@@ -585,7 +584,6 @@ def visualize_risk_heatmap_hex(
             radius=hex_size * 0.95,
             orientation=math.pi/2,  # Pointy-topped with proper orientation
             facecolor=facecolor,
-            edgecolor=[0.5, 0.5, 0.5],
             linewidth=0
         )
         patches.append(hex_patch)
