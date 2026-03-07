@@ -257,6 +257,8 @@ def visualize_risk_heatmap_square(
     num_rows = None
     road_coords = set()
     water_coords = set()
+    mountain_coords = set()
+    hill_coords = set()
 
     if input_data:
         map_config = input_data.get("map_config", {})
@@ -266,8 +268,12 @@ def visualize_risk_heatmap_square(
         if show_features:
             road_locations = map_config.get("road_locations", [])
             water_locations = map_config.get("water_locations", [])
+            mountain_locations = map_config.get("mountain_locations", [])
+            hill_locations = map_config.get("hill_locations", [])
             road_coords = set((loc[0], loc[1]) for loc in road_locations)
             water_coords = set((loc[0], loc[1]) for loc in water_locations)
+            mountain_coords = set((loc[0], loc[1]) for loc in mountain_locations)
+            hill_coords = set((loc[0], loc[1]) for loc in hill_locations)
 
     # If grid size not found, try to infer from data coordinates
     if num_cols is None or num_rows is None:
@@ -337,11 +343,19 @@ def visualize_risk_heatmap_square(
             # Calculate face color
             is_road = (x, y) in road_coords
             is_water = (x, y) in water_coords
+            is_mountain = (x, y) in mountain_coords
+            is_hill = (x, y) in hill_coords
             base_color = cmap(norm_risk)
 
             if show_features and is_water:
                 water_color = (0.3, 0.6, 1.0, 1.0)
                 facecolor = tuple(0.4 * water_color[i] + 0.6 * base_color[i] for i in range(3))
+            elif show_features and is_mountain:
+                mountain_color = (0.4, 0.4, 0.45, 1.0)
+                facecolor = tuple(0.4 * mountain_color[i] + 0.6 * base_color[i] for i in range(3))
+            elif show_features and is_hill:
+                hill_color = (0.55, 0.55, 0.6, 1.0)
+                facecolor = tuple(0.4 * hill_color[i] + 0.6 * base_color[i] for i in range(3))
             elif show_features and is_road:
                 road_color = (0.7, 0.55, 0.4, 1.0)
                 facecolor = tuple(0.4 * road_color[i] + 0.6 * base_color[i] for i in range(3))
@@ -407,12 +421,16 @@ def visualize_risk_heatmap_square(
     cbar.set_label('Normalized Risk', rotation=270, labelpad=20, fontsize=12)
 
     # Add legend for features
-    if show_features and (road_coords or water_coords):
+    if show_features and (road_coords or water_coords or mountain_coords or hill_coords):
         legend_elements = []
         if road_coords:
             legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
         if water_coords:
             legend_elements.append(Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'))
+        if mountain_coords:
+            legend_elements.append(Patch(facecolor=[0.4, 0.4, 0.45], edgecolor='black', label='Mountain'))
+        if hill_coords:
+            legend_elements.append(Patch(facecolor=[0.55, 0.55, 0.6], edgecolor='black', label='Hill'))
         if legend_elements:
             ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
@@ -460,6 +478,8 @@ def visualize_risk_heatmap_hex(
     num_rows = None
     road_coords = set()
     water_coords = set()
+    mountain_coords = set()
+    hill_coords = set()
 
     if input_data:
         map_config = input_data.get("map_config", {})
@@ -469,8 +489,12 @@ def visualize_risk_heatmap_hex(
         if show_features:
             road_locations = map_config.get("road_locations", [])
             water_locations = map_config.get("water_locations", [])
+            mountain_locations = map_config.get("mountain_locations", [])
+            hill_locations = map_config.get("hill_locations", [])
             road_coords = set((loc[0], loc[1]) for loc in road_locations)
             water_coords = set((loc[0], loc[1]) for loc in water_locations)
+            mountain_coords = set((loc[0], loc[1]) for loc in mountain_locations)
+            hill_coords = set((loc[0], loc[1]) for loc in hill_locations)
 
     # If grid size not found, try to infer from data coordinates
     if num_cols is None or num_rows is None:
@@ -539,11 +563,19 @@ def visualize_risk_heatmap_hex(
             # Calculate face color
             is_road = (x, y) in road_coords
             is_water = (x, y) in water_coords
+            is_mountain = (x, y) in mountain_coords
+            is_hill = (x, y) in hill_coords
             base_color = cmap(norm_risk)
 
             if show_features and is_water:
                 water_color = (0.3, 0.6, 1.0, 1.0)
                 facecolor = tuple(0.4 * water_color[i] + 0.6 * base_color[i] for i in range(3))
+            elif show_features and is_mountain:
+                mountain_color = (0.4, 0.4, 0.45, 1.0)
+                facecolor = tuple(0.4 * mountain_color[i] + 0.6 * base_color[i] for i in range(3))
+            elif show_features and is_hill:
+                hill_color = (0.55, 0.55, 0.6, 1.0)
+                facecolor = tuple(0.4 * hill_color[i] + 0.6 * base_color[i] for i in range(3))
             elif show_features and is_road:
                 road_color = (0.7, 0.55, 0.4, 1.0)
                 facecolor = tuple(0.4 * road_color[i] + 0.6 * base_color[i] for i in range(3))
@@ -613,12 +645,16 @@ def visualize_risk_heatmap_hex(
     cbar.set_label('Normalized Risk', rotation=270, labelpad=20, fontsize=12)
 
     # Add legend for features
-    if show_features and (road_coords or water_coords):
+    if show_features and (road_coords or water_coords or mountain_coords or hill_coords):
         legend_elements = []
         if road_coords:
             legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
         if water_coords:
             legend_elements.append(Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'))
+        if mountain_coords:
+            legend_elements.append(Patch(facecolor=[0.4, 0.4, 0.45], edgecolor='black', label='Mountain'))
+        if hill_coords:
+            legend_elements.append(Patch(facecolor=[0.55, 0.55, 0.6], edgecolor='black', label='Hill'))
         if legend_elements:
             ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
