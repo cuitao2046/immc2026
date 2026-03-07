@@ -524,7 +524,7 @@ def visualize_rect_hex_map(
             orientation=math.pi/2,  # pointy-topped
             facecolor=color,
             edgecolor=[0.7, 0.7, 0.7],
-            linewidth=0.5
+            linewidth=0
         )
         patches.append(hex_patch)
 
@@ -620,7 +620,7 @@ def visualize_rect_risk_heatmap(
             orientation=math.pi/2,
             facecolor=facecolor,
             edgecolor=[0.5, 0.5, 0.5],
-            linewidth=0.3
+            linewidth=0
         )
         patches.append(hex_patch)
 
