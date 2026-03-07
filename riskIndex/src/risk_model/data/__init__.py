@@ -7,6 +7,11 @@ from .generator import (
     GridLayoutConfig,
     ProtectedAreaLayout,
 )
+from .spatial_generator import (
+    SpatialDataGenerator,
+    SpatialConfig,
+    SpatialMaps,
+)
 from .io import GridDataWriter, GridDataReader
 from .validation import DataValidator, ValidationError
 
@@ -14,6 +19,9 @@ __all__ = [
     'SyntheticDataGenerator',
     'GridLayoutConfig',
     'ProtectedAreaLayout',
+    'SpatialDataGenerator',
+    'SpatialConfig',
+    'SpatialMaps',
     'GridDataWriter',
     'GridDataReader',
     'DataValidator',
