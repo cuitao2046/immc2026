@@ -113,8 +113,11 @@ def calculate_figure_size(num_cols: int, num_rows: int, grid_type: str = 'square
         scale_factor = 1.0
 
     if grid_type == 'hex':
+        # Pointy-topped hexagons, even-q:
+        # width per column: 1.5 * radius
+        # height per row: sqrt(3) * radius
         base_width = 1.5 * scale_factor
-        base_height = 1.0 * scale_factor
+        base_height = math.sqrt(3) * scale_factor
     else:
         base_width = 1.0 * scale_factor
         base_height = 1.0 * scale_factor
@@ -169,7 +172,7 @@ def should_show_labels(num_cols: int, num_rows: int, user_request: bool) -> bool
 def hex_to_pixel_offset(col: int, row: int, size: float = 1.0) -> Tuple[float, float]:
     """
     Convert even-q offset hex coordinates to pixel coordinates.
-    Uses pointy-topped hexagons.
+    Uses pointy-topped hexagons with even-q offset.
 
     Args:
         col: Column (x) in offset coordinates
@@ -179,7 +182,7 @@ def hex_to_pixel_offset(col: int, row: int, size: float = 1.0) -> Tuple[float, f
     Returns:
         (x, y) pixel coordinates
     """
-    # Even-q offset coordinates to pixel
+    # Even-q offset coordinates for pointy-topped hexagons
     x = size * (3/2 * col)
     y = size * (math.sqrt(3) * (row + 0.5 * (col % 2)))
     return (x, y)
@@ -187,7 +190,7 @@ def hex_to_pixel_offset(col: int, row: int, size: float = 1.0) -> Tuple[float, f
 
 def get_hex_grid_bounds(num_cols: int, num_rows: int, size: float = 1.0) -> Tuple[float, float, float, float]:
     """
-    Calculate the bounding box for a hexagon grid.
+    Calculate the bounding box for a hexagon grid (pointy-topped, even-q).
 
     Args:
         num_cols: Number of columns
@@ -197,21 +200,27 @@ def get_hex_grid_bounds(num_cols: int, num_rows: int, size: float = 1.0) -> Tupl
     Returns:
         (x_min, x_max, y_min, y_max)
     """
-    # Get coordinates of corners
-    corners = [
-        hex_to_pixel_offset(0, 0, size),
-        hex_to_pixel_offset(num_cols - 1, 0, size),
-        hex_to_pixel_offset(0, num_rows - 1, size),
-        hex_to_pixel_offset(num_cols - 1, num_rows - 1, size),
+    # Calculate bounds by sampling corner points
+    all_x = []
+    all_y = []
+
+    # Sample corners and key points
+    sample_coords = [
+        (0, 0),
+        (num_cols - 1, 0),
+        (0, num_rows - 1),
+        (num_cols - 1, num_rows - 1),
     ]
 
-    xs = [c[0] for c in corners]
-    ys = [c[1] for c in corners]
+    for col, row in sample_coords:
+        x, y = hex_to_pixel_offset(col, row, size)
+        all_x.append(x)
+        all_y.append(y)
 
-    x_min = min(xs) - size
-    x_max = max(xs) + size
-    y_min = min(ys) - size
-    y_max = max(ys) + size
+    x_min = min(all_x) - size
+    x_max = max(all_x) + size
+    y_min = min(all_y) - size
+    y_max = max(all_y) + size
 
     return (x_min, x_max, y_min, y_max)
 
@@ -569,11 +578,12 @@ def visualize_risk_heatmap_hex(
         px, py = hex_to_pixel_offset(x, y, hex_size)
 
         # Create hexagon patch (pointy-topped)
+        # Use 0.95*size to ensure no overlap, orientation=pi/2 for proper alignment
         hex_patch = RegularPolygon(
             (px, py),
             numVertices=6,
-            radius=hex_size,
-            orientation=0,  # Pointy-topped
+            radius=hex_size * 0.95,
+            orientation=math.pi/2,  # Pointy-topped with proper orientation
             facecolor=facecolor,
             edgecolor=[0.5, 0.5, 0.5],
             linewidth=0
