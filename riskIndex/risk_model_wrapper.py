@@ -17,6 +17,7 @@ import sys
 import os
 import json
 import argparse
+import math
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -54,11 +55,8 @@ from risk_model.risk import (
 class GridInputData:
     """Input data for a single grid cell."""
     grid_id: str
-    x: float
-    y: float
-    distance_to_boundary: float
-    distance_to_road: float
-    distance_to_water: float
+    x: int  # Column index (0-based, from left to right)
+    y: int  # Row index (0-based, from bottom to top)
     fire_risk: float
     terrain_complexity: float
     vegetation_type: str  # "GRASSLAND", "FOREST", "SHRUB"
@@ -73,8 +71,19 @@ class TimeInputData:
 
 
 @dataclass
+class MapConfig:
+    """Map configuration for automatic distance calculation."""
+    map_width: int  # Number of columns
+    map_height: int  # Number of rows
+    boundary_type: str  # "RECTANGLE"
+    road_locations: List[Tuple[int, int]]  # List of (x, y) grid coordinates
+    water_locations: List[Tuple[int, int]]  # List of (x, y) grid coordinates
+
+
+@dataclass
 class ModelInputData:
     """Complete input data for the model."""
+    map_config: MapConfig
     grids: List[GridInputData]
     time: TimeInputData
 
@@ -88,6 +97,73 @@ class ModelConfigData:
 
 
 # ============================================================================
+# Distance Calculator
+# ============================================================================
+
+class DistanceCalculator:
+    """Calculate distances using grid coordinates."""
+
+    def __init__(self, map_config: MapConfig):
+        self.map_width = map_config.map_width
+        self.map_height = map_config.map_height
+        self.boundary_type = map_config.boundary_type
+        self.road_locations = map_config.road_locations
+        self.water_locations = map_config.water_locations
+
+    def euclidean_distance(self, x1: int, y1: int, x2: int, y2: int) -> float:
+        """Calculate Euclidean distance between two grid cells."""
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+    def calculate_distance_to_boundary(self, x: int, y: int) -> float:
+        """
+        Calculate distance to nearest boundary.
+        Coordinate system: origin at bottom-left, x increases right, y increases up.
+        """
+        if self.boundary_type == "RECTANGLE":
+            # Distance to each edge (in grid units)
+            dist_left = x
+            dist_right = (self.map_width - 1) - x
+            dist_bottom = y
+            dist_top = (self.map_height - 1) - y
+
+            min_dist_grid = min(dist_left, dist_right, dist_bottom, dist_top)
+
+            # Normalize to [0, 1]
+            max_possible_dist = max(self.map_width, self.map_height) / 2
+            normalized_dist = min_dist_grid / max_possible_dist if max_possible_dist > 0 else 0.0
+
+            # Invert: closer to boundary = higher risk (0 = far, 1 = at boundary)
+            return 1.0 - min(normalized_dist, 1.0)
+        else:
+            return 0.5
+
+    def calculate_distance_to_feature(self, x: int, y: int, feature_locations: List[Tuple[int, int]]) -> float:
+        """Calculate normalized distance to nearest feature (road or water)."""
+        if not feature_locations:
+            return 0.5
+
+        min_dist = float('inf')
+        for (fx, fy) in feature_locations:
+            dist = self.euclidean_distance(x, y, fx, fy)
+            if dist < min_dist:
+                min_dist = dist
+
+        # Normalize to [0, 1]
+        max_possible_dist = math.sqrt(self.map_width ** 2 + self.map_height ** 2)
+        normalized_dist = min_dist / max_possible_dist if max_possible_dist > 0 else 0.0
+
+        # Invert: closer to feature = higher risk (0 = far, 1 = at feature)
+        return 1.0 - min(normalized_dist, 1.0)
+
+    def calculate_distances(self, x: int, y: int) -> Tuple[float, float, float]:
+        """Calculate all three distances for a grid cell."""
+        dist_boundary = self.calculate_distance_to_boundary(x, y)
+        dist_road = self.calculate_distance_to_feature(x, y, self.road_locations)
+        dist_water = self.calculate_distance_to_feature(x, y, self.water_locations)
+        return dist_boundary, dist_road, dist_water
+
+
+# ============================================================================
 # Data Loading Functions
 # ============================================================================
 
@@ -97,14 +173,18 @@ def load_data_from_json(filepath: str) -> ModelInputData:
 
     Expected JSON format:
     {
+        "map_config": {
+            "map_width": 10,
+            "map_height": 10,
+            "boundary_type": "RECTANGLE",
+            "road_locations": [[2, 3], [5, 7]],
+            "water_locations": [[1, 1], [8, 5]]
+        },
         "grids": [
             {
                 "grid_id": "A01",
-                "x": 0.0,
-                "y": 0.0,
-                "distance_to_boundary": 0.1,
-                "distance_to_road": 0.2,
-                "distance_to_water": 0.3,
+                "x": 0,
+                "y": 0,
                 "fire_risk": 0.5,
                 "terrain_complexity": 0.3,
                 "vegetation_type": "GRASSLAND",
@@ -121,6 +201,11 @@ def load_data_from_json(filepath: str) -> ModelInputData:
         }
     }
 
+    Coordinate system:
+    - Origin at bottom-left grid cell center
+    - x: column index, increases to the right
+    - y: row index, increases upward
+
     Args:
         filepath: Path to JSON file
 
@@ -130,30 +215,38 @@ def load_data_from_json(filepath: str) -> ModelInputData:
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    grids_data = data.get("grids", [])
-    time_data = data.get("time", {})
+    # Load map config
+    map_config_data = data.get("map_config", {})
+    map_config = MapConfig(
+        map_width=map_config_data.get("map_width", 10),
+        map_height=map_config_data.get("map_height", 10),
+        boundary_type=map_config_data.get("boundary_type", "RECTANGLE"),
+        road_locations=[tuple(loc) for loc in map_config_data.get("road_locations", [])],
+        water_locations=[tuple(loc) for loc in map_config_data.get("water_locations", [])]
+    )
 
+    # Load grids
+    grids_data = data.get("grids", [])
     grids = []
     for g in grids_data:
         grids.append(GridInputData(
             grid_id=g.get("grid_id", ""),
-            x=g.get("x", 0.0),
-            y=g.get("y", 0.0),
-            distance_to_boundary=g.get("distance_to_boundary", 0.0),
-            distance_to_road=g.get("distance_to_road", 0.0),
-            distance_to_water=g.get("distance_to_water", 0.0),
+            x=g.get("x", 0),
+            y=g.get("y", 0),
             fire_risk=g.get("fire_risk", 0.0),
             terrain_complexity=g.get("terrain_complexity", 0.0),
             vegetation_type=g.get("vegetation_type", "GRASSLAND"),
             species_densities=g.get("species_densities", {})
         ))
 
+    # Load time
+    time_data = data.get("time", {})
     time = TimeInputData(
         hour_of_day=time_data.get("hour_of_day", 12),
         season=time_data.get("season", "DRY")
     )
 
-    return ModelInputData(grids=grids, time=time)
+    return ModelInputData(map_config=map_config, grids=grids, time=time)
 
 
 def load_config_from_json(filepath: str) -> ModelConfigData:
@@ -200,24 +293,33 @@ def load_config_from_json(filepath: str) -> ModelConfigData:
 # Data Conversion Functions
 # ============================================================================
 
-def convert_grid_input(grid_data: GridInputData) -> Tuple[Grid, Environment, SpeciesDensity]:
+def convert_grid_input(
+    grid_data: GridInputData,
+    distance_calculator: DistanceCalculator
+) -> Tuple[Grid, Environment, SpeciesDensity]:
     """
     Convert GridInputData to model input objects.
 
     Args:
         grid_data: Grid input data
+        distance_calculator: Calculator for automatic distance computation
 
     Returns:
         Tuple of (Grid, Environment, SpeciesDensity)
     """
+    # Calculate distances automatically from coordinates
+    dist_boundary, dist_road, dist_water = distance_calculator.calculate_distances(
+        grid_data.x, grid_data.y
+    )
+
     # Create Grid object
     grid = Grid(
         grid_id=grid_data.grid_id,
-        x=grid_data.x,
-        y=grid_data.y,
-        distance_to_boundary=grid_data.distance_to_boundary,
-        distance_to_road=grid_data.distance_to_road,
-        distance_to_water=grid_data.distance_to_water
+        x=float(grid_data.x),
+        y=float(grid_data.y),
+        distance_to_boundary=dist_boundary,
+        distance_to_road=dist_road,
+        distance_to_water=dist_water
     )
 
     # Create Environment object
@@ -386,36 +488,44 @@ def run_risk_model(
     print("="*70)
 
     # Step 1: Load input data
-    print(f"\n[1/5] Loading input data from: {data_file}")
+    print(f"\n[1/6] Loading input data from: {data_file}")
     input_data = load_data_from_json(data_file)
     print(f"  Loaded {len(input_data.grids)} grid cells")
+    print(f"  Map size: {input_data.map_config.map_width} x {input_data.map_config.map_height}")
+    print(f"  Roads: {len(input_data.map_config.road_locations)} locations")
+    print(f"  Water sources: {len(input_data.map_config.water_locations)} locations")
     print(f"  Time: {input_data.time.hour_of_day:02d}:00, {input_data.time.season} season")
 
-    # Step 2: Load configuration
+    # Step 2: Create distance calculator
+    print(f"\n[2/6] Creating distance calculator")
+    distance_calculator = DistanceCalculator(input_data.map_config)
+    print("  Distance calculator created")
+
+    # Step 3: Load configuration
     model_config = ModelConfigData()
     if config_file:
-        print(f"\n[2/5] Loading configuration from: {config_file}")
+        print(f"\n[3/6] Loading configuration from: {config_file}")
         model_config = load_config_from_json(config_file)
         print("  Configuration loaded")
     else:
-        print(f"\n[2/5] Using default configuration")
+        print(f"\n[3/6] Using default configuration")
 
-    # Step 3: Create risk model
-    print(f"\n[3/5] Creating risk model")
+    # Step 4: Create risk model
+    print(f"\n[4/6] Creating risk model")
     model = create_model_from_config(model_config)
     print("  Model created")
 
-    # Step 4: Convert input data
-    print(f"\n[4/5] Converting input data")
+    # Step 5: Convert input data
+    print(f"\n[5/6] Converting input data")
     grid_data_list = []
     for grid_input in input_data.grids:
-        grid, env, density = convert_grid_input(grid_input)
+        grid, env, density = convert_grid_input(grid_input, distance_calculator)
         grid_data_list.append((grid, env, density))
     time_context = convert_time_input(input_data.time)
     print(f"  Converted {len(grid_data_list)} grid cells")
 
-    # Step 5: Calculate risk
-    print(f"\n[5/5] Calculating risk")
+    # Step 6: Calculate risk
+    print(f"\n[6/6] Calculating risk")
     results = model.calculate_batch(grid_data_list, time_context)
     print(f"  Calculated risk for {len(results)} grid cells")
 
@@ -457,14 +567,18 @@ def main():
         epilog="""
 Example data.json format:
 {
+    "map_config": {
+        "map_width": 10,
+        "map_height": 10,
+        "boundary_type": "RECTANGLE",
+        "road_locations": [[2, 3], [5, 7]],
+        "water_locations": [[1, 1], [8, 5]]
+    },
     "grids": [
         {
             "grid_id": "A01",
-            "x": 0.0,
-            "y": 0.0,
-            "distance_to_boundary": 0.1,
-            "distance_to_road": 0.2,
-            "distance_to_water": 0.3,
+            "x": 0,
+            "y": 0,
             "fire_risk": 0.5,
             "terrain_complexity": 0.3,
             "vegetation_type": "GRASSLAND",
@@ -480,6 +594,11 @@ Example data.json format:
         "season": "RAINY"
     }
 }
+
+Coordinate system:
+- Origin at bottom-left grid cell center
+- x: column index (0-based), increases to the right
+- y: row index (0-based), increases upward
 
 Example config.json format (all fields optional):
 {
