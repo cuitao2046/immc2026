@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate a hexagon grid map with curved roads and risk heatmap.
+Generate a hexagon grid map with rectangular boundary and risk heatmap.
 """
 
 import sys
@@ -26,165 +26,195 @@ from risk_model.config import WeightManager
 
 
 # ============================================================================
-# Hexagon Grid System
+# Hexagon Grid System (Offset Coordinates for Rectangular Grid)
 # ============================================================================
 
 @dataclass
 class HexCoord:
-    """Axial coordinates for hexagon grid."""
-    q: int  # column
-    r: int  # row
+    """
+    Offset coordinates for hexagon grid with rectangular boundary.
+    Uses "even-q" offset coordinates for pointy-topped hexagons.
+    """
+    col: int  # column (x)
+    row: int  # row (y)
 
     def to_tuple(self) -> Tuple[int, int]:
-        return (self.q, self.r)
+        return (self.col, self.row)
 
     def __eq__(self, other):
-        return isinstance(other, HexCoord) and self.q == other.q and self.r == other.r
+        return isinstance(other, HexCoord) and self.col == other.col and self.row == other.row
 
     def __hash__(self):
-        return hash((self.q, self.r))
-
-    def __add__(self, other):
-        return HexCoord(self.q + other.q, self.r + other.r)
+        return hash((self.col, self.row))
 
 
-# Hexagon directions (axial coordinates)
-HEX_DIRECTIONS = [
-    HexCoord(1, 0),   # Right
-    HexCoord(1, -1),  # Upper Right
-    HexCoord(0, -1),  # Upper Left
-    HexCoord(-1, 0),  # Left
-    HexCoord(-1, 1),  # Lower Left
-    HexCoord(0, 1),   # Lower Right
-]
-
-
-def hex_to_pixel(hex_coord: HexCoord, size: float = 1.0) -> Tuple[float, float]:
+def hex_to_pixel_offset(hex_coord: HexCoord, size: float = 1.0) -> Tuple[float, float]:
     """
-    Convert axial hex coordinates to pixel coordinates.
-    Uses "pointy-topped" hexagons.
+    Convert offset hex coordinates to pixel coordinates.
+    Uses "even-q" offset coordinates for pointy-topped hexagons in rectangular grid.
     """
-    q, r = hex_coord.q, hex_coord.r
-    x = size * (3/2 * q)
-    y = size * (math.sqrt(3)/2 * q + math.sqrt(3) * r)
+    col, row = hex_coord.col, hex_coord.row
+
+    # Even-q offset coordinates to pixel
+    x = size * (3/2 * col)
+    y = size * (math.sqrt(3) * (row + 0.5 * (col % 2)))
+
     return (x, y)
 
 
-def hex_neighbor(hex_coord: HexCoord, direction: int) -> HexCoord:
-    """Get neighbor in given direction (0-5)."""
-    return hex_coord + HEX_DIRECTIONS[direction % 6]
-
-
-def hex_all_neighbors(hex_coord: HexCoord) -> List[HexCoord]:
-    """Get all 6 neighbors of a hexagon."""
-    return [hex_coord + d for d in HEX_DIRECTIONS]
-
-
-def hex_distance(a: HexCoord, b: HexCoord) -> int:
-    """Calculate distance between two hexagons in hex steps."""
-    return (abs(a.q - b.q) + abs(a.q + a.r - b.q - b.r) + abs(a.r - b.r)) // 2
-
-
-def generate_hex_grid(map_radius: int = 15) -> List[HexCoord]:
+def generate_rectangular_hex_grid(num_cols: int = 20, num_rows: int = 15) -> List[HexCoord]:
     """
-    Generate a hexagon grid of given radius.
-    Returns list of HexCoord in axial coordinates.
+    Generate a rectangular hexagon grid using even-q offset coordinates.
+
+    Args:
+        num_cols: Number of columns
+        num_rows: Number of rows
+
+    Returns:
+        List of HexCoord in offset coordinates
     """
     hexes = []
-    for q in range(-map_radius, map_radius + 1):
-        r1 = max(-map_radius, -q - map_radius)
-        r2 = min(map_radius, -q + map_radius)
-        for r in range(r1, r2 + 1):
-            hexes.append(HexCoord(q, r))
+    for col in range(num_cols):
+        for row in range(num_rows):
+            hexes.append(HexCoord(col=col, row=row))
     return hexes
+
+
+def get_hex_neighbors_offset(hex_coord: HexCoord, num_cols: int, num_rows: int) -> List[HexCoord]:
+    """
+    Get all neighbors of a hexagon in even-q offset coordinates.
+    """
+    col, row = hex_coord.col, hex_coord.row
+
+    # Neighbor patterns depend on whether column is even or odd
+    if col % 2 == 0:
+        # Even column
+        neighbors = [
+            HexCoord(col + 1, row),      # East
+            HexCoord(col + 1, row - 1),  # Northeast
+            HexCoord(col, row - 1),      # Northwest
+            HexCoord(col - 1, row),      # West
+            HexCoord(col, row + 1),      # Southwest
+            HexCoord(col + 1, row + 1),  # Southeast
+        ]
+    else:
+        # Odd column
+        neighbors = [
+            HexCoord(col + 1, row + 1),  # East
+            HexCoord(col + 1, row),      # Northeast
+            HexCoord(col, row - 1),      # Northwest
+            HexCoord(col - 1, row),      # West
+            HexCoord(col - 1, row + 1),  # Southwest
+            HexCoord(col, row + 1),      # Southeast
+        ]
+
+    # Filter out neighbors outside the grid
+    valid_neighbors = []
+    for n in neighbors:
+        if 0 <= n.col < num_cols and 0 <= n.row < num_rows:
+            valid_neighbors.append(n)
+
+    return valid_neighbors
+
+
+def hex_distance_offset(a: HexCoord, b: HexCoord) -> float:
+    """
+    Calculate approximate distance between two hexagons in offset coordinates.
+    Uses pixel distance for accuracy.
+    """
+    xa, ya = hex_to_pixel_offset(a, 1.0)
+    xb, yb = hex_to_pixel_offset(b, 1.0)
+    return math.sqrt((xa - xb) ** 2 + (ya - yb) ** 2)
 
 
 # ============================================================================
 # Curved Road Generation
 # ============================================================================
 
-def generate_curved_road(
+def generate_curved_road_rect(
     start_hex: HexCoord,
-    direction: int,
+    num_cols: int,
+    num_rows: int,
     length: int,
     curvature: float = 0.3,
-    branch_prob: float = 0.15,
-    hex_set: Optional[Set[HexCoord]] = None
+    branch_prob: float = 0.15
 ) -> List[List[HexCoord]]:
     """
-    Generate a curved road starting from start_hex.
-    Uses a random walk with momentum.
-    Returns list of roads (main road + branches).
+    Generate a curved road on rectangular hex grid.
     """
     roads = []
     main_road = [start_hex]
-    current_dir = direction
     current = start_hex
 
-    for _ in range(length):
-        # Randomly change direction with some probability
-        if random.random() < curvature:
-            turn = random.choice([-1, 1])  # left or right turn
-            current_dir = (current_dir + turn) % 6
-        elif random.random() < curvature * 0.3:
-            # Occasionally turn more sharply
-            turn = random.choice([-2, 2])
-            current_dir = (current_dir + turn) % 6
+    # Directions: 0=East, 1=Northeast, 2=Northwest, 3=West, 4=Southwest, 5=Southeast
+    current_dir = 0  # Start going east
 
-        # Move to next hex
-        next_hex = hex_neighbor(current, current_dir)
-        if hex_set is None or next_hex in hex_set:
-            main_road.append(next_hex)
-            current = next_hex
+    for _ in range(length):
+        # Get neighbors
+        neighbors = get_hex_neighbors_offset(current, num_cols, num_rows)
+
+        if not neighbors:
+            break
+
+        # Randomly change direction with some probability
+        if random.random() < curvature and len(main_road) > 2:
+            # Choose a random neighbor not backtracking
+            prev_hex = main_road[-2] if len(main_road) >= 2 else None
+            possible_next = [n for n in neighbors if n != prev_hex]
+            if possible_next:
+                next_hex = random.choice(possible_next)
+            else:
+                next_hex = random.choice(neighbors)
         else:
-            # Try other directions
-            found = False
-            for offset in [1, -1, 2, -2, 3]:
-                test_dir = (current_dir + offset) % 6
-                test_hex = hex_neighbor(current, test_dir)
-                if hex_set is None or test_hex in hex_set:
-                    main_road.append(test_hex)
-                    current = test_hex
-                    current_dir = test_dir
-                    found = True
-                    break
-            if not found:
-                break
+            # Continue in similar direction - pick neighbor closest to current direction
+            # For simplicity, just pick random neighbor with some momentum
+            prev_hex = main_road[-2] if len(main_road) >= 2 else None
+            possible_next = [n for n in neighbors if n != prev_hex]
+            if possible_next:
+                # Prefer neighbors that move generally right/left
+                if random.random() < 0.7:
+                    # Prefer horizontal-ish movement
+                    rightish = [n for n in possible_next if n.col > current.col]
+                    leftish = [n for n in possible_next if n.col < current.col]
+                    if rightish:
+                        next_hex = random.choice(rightish)
+                    elif leftish:
+                        next_hex = random.choice(leftish)
+                    else:
+                        next_hex = random.choice(possible_next)
+                else:
+                    next_hex = random.choice(possible_next)
+            else:
+                next_hex = random.choice(neighbors)
+
+        main_road.append(next_hex)
+        current = next_hex
 
     roads.append(main_road)
 
     # Generate branches
-    for i in range(1, len(main_road) - 1):
+    for i in range(3, len(main_road) - 3):
         if random.random() < branch_prob:
             branch_point = main_road[i]
-            # Choose a direction not along the main road
-            main_dir_prev = None
-            main_dir_next = None
-            for d in range(6):
-                if hex_neighbor(branch_point, d) == main_road[i-1]:
-                    main_dir_prev = d
-                if hex_neighbor(branch_point, d) == main_road[i+1]:
-                    main_dir_next = d
+            neighbors = get_hex_neighbors_offset(branch_point, num_cols, num_rows)
 
-            # Choose perpendicular direction
-            possible_dirs = []
-            for d in range(6):
-                if d != main_dir_prev and d != main_dir_next:
-                    possible_dirs.append(d)
+            # Find a direction not on the main road
+            main_road_set = set(main_road)
+            possible_starts = [n for n in neighbors if n not in main_road_set]
 
-            if possible_dirs:
-                branch_dir = random.choice(possible_dirs)
-                branch_length = random.randint(3, 10)
-                branch_road = [branch_point]
-                current_branch = branch_point
-                current_branch_dir = branch_dir
+            if possible_starts:
+                branch_start = random.choice(possible_starts)
+                branch_length = random.randint(4, 10)
+                branch_road = [branch_point, branch_start]
+                current_branch = branch_start
 
                 for _ in range(branch_length):
-                    if random.random() < curvature * 0.5:
-                        turn = random.choice([-1, 1])
-                        current_branch_dir = (current_branch_dir + turn) % 6
-                    next_branch = hex_neighbor(current_branch, current_branch_dir)
-                    if hex_set is None or next_branch in hex_set:
+                    branch_neighbors = get_hex_neighbors_offset(current_branch, num_cols, num_cols)
+                    # Avoid going back to main road too quickly
+                    branch_road_set = set(branch_road)
+                    possible_next = [n for n in branch_neighbors if n not in branch_road_set]
+                    if possible_next:
+                        next_branch = random.choice(possible_next)
                         branch_road.append(next_branch)
                         current_branch = next_branch
                     else:
@@ -196,39 +226,44 @@ def generate_curved_road(
 
 
 # ============================================================================
-# Distance Calculator for Hex Grid
+# Distance Calculator for Rectangular Hex Grid
 # ============================================================================
 
 @dataclass
-class HexMapConfig:
-    """Map configuration for hex grid."""
-    map_radius: int
+class RectHexMapConfig:
+    """Map configuration for rectangular hex grid."""
+    num_cols: int
+    num_rows: int
     hex_coords: List[HexCoord]
     road_hexes: Set[HexCoord]
     water_hexes: Set[HexCoord]
 
 
-class HexDistanceCalculator:
-    """Calculate distances using hex grid coordinates."""
+class RectHexDistanceCalculator:
+    """Calculate distances using rectangular hex grid coordinates."""
 
-    def __init__(self, map_config: HexMapConfig):
-        self.map_radius = map_config.map_radius
+    def __init__(self, map_config: RectHexMapConfig):
+        self.num_cols = map_config.num_cols
+        self.num_rows = map_config.num_rows
         self.hex_coords = map_config.hex_coords
         self.road_hexes = map_config.road_hexes
         self.water_hexes = map_config.water_hexes
         self.hex_set = set(map_config.hex_coords)
-        self.center = HexCoord(0, 0)
 
     def calculate_distance_to_boundary(self, hex_coord: HexCoord) -> float:
-        """Calculate normalized distance to nearest boundary."""
-        dist = self.map_radius - max(
-            abs(hex_coord.q),
-            abs(hex_coord.r),
-            abs(hex_coord.q + hex_coord.r)
-        )
-        normalized_dist = dist / self.map_radius
+        """Calculate normalized distance to nearest rectangular boundary."""
+        # Distance to each edge
+        dist_left = hex_coord.col
+        dist_right = (self.num_cols - 1) - hex_coord.col
+        dist_bottom = hex_coord.row
+        dist_top = (self.num_rows - 1) - hex_coord.row
+
+        min_dist = min(dist_left, dist_right, dist_bottom, dist_top)
+        max_possible = max(self.num_cols, self.num_rows) / 2
+        normalized_dist = min_dist / max_possible if max_possible > 0 else 0.0
+
         # Invert: closer to boundary = higher risk
-        return 1.0 - normalized_dist
+        return 1.0 - min(normalized_dist, 1.0)
 
     def calculate_distance_to_feature(self, hex_coord: HexCoord, feature_set: Set[HexCoord]) -> float:
         """Calculate normalized distance to nearest feature set."""
@@ -237,15 +272,15 @@ class HexDistanceCalculator:
 
         min_dist = float('inf')
         for feature_hex in feature_set:
-            dist = hex_distance(hex_coord, feature_hex)
+            dist = hex_distance_offset(hex_coord, feature_hex)
             if dist < min_dist:
                 min_dist = dist
                 if min_dist == 0:
                     break
 
         # Normalize to [0, 1]
-        max_possible_dist = self.map_radius * 2
-        normalized_dist = min_dist / max_possible_dist if max_possible_dist > 0 else 0.0
+        max_possible = math.sqrt(self.num_cols ** 2 + self.num_rows ** 2) * math.sqrt(3)
+        normalized_dist = min_dist / max_possible if max_possible > 0 else 0.0
 
         # Invert: closer to feature = higher risk
         return 1.0 - min(normalized_dist, 1.0)
@@ -262,27 +297,25 @@ class HexDistanceCalculator:
 # Map Generation
 # ============================================================================
 
-def generate_hex_map_data(
-    map_radius: int = 18,
-    output_json: str = "hex_map_data.json"
+def generate_rectangular_hex_map_data(
+    num_cols: int = 25,
+    num_rows: int = 18,
+    output_json: str = "rect_hex_map_data.json"
 ):
-    """Generate hexagon map data."""
-    print(f"Generating hex grid with radius {map_radius}...")
-    hex_coords = generate_hex_grid(map_radius)
+    """Generate rectangular hexagon map data."""
+    print(f"Generating rectangular hex grid: {num_cols} cols x {num_rows} rows...")
+    hex_coords = generate_rectangular_hex_grid(num_cols, num_rows)
     hex_set = set(hex_coords)
     print(f"  Total hexagons: {len(hex_coords)}")
-
-    # Find center hex
-    center = HexCoord(0, 0)
 
     # Generate main roads
     print("Generating curved roads...")
     all_road_hexes = set()
     road_paths = []
 
-    # Main road 1: starts from left, goes towards right with curve
-    start1 = HexCoord(-map_radius + 2, 0)
-    roads1 = generate_curved_road(start1, 0, length=map_radius * 2 - 4, curvature=0.28, branch_prob=0.12, hex_set=hex_set)
+    # Main road 1: starts from left, goes towards right
+    start1 = HexCoord(col=0, row=num_rows // 2)
+    roads1 = generate_curved_road_rect(start1, num_cols, num_rows, length=num_cols * 2, curvature=0.35, branch_prob=0.12)
     for road in roads1:
         road_paths.append(road)
         for h in road:
@@ -290,8 +323,8 @@ def generate_hex_map_data(
                 all_road_hexes.add(h)
 
     # Main road 2: starts from bottom-left, goes towards top-right
-    start2 = HexCoord(-map_radius + 4, map_radius - 4)
-    roads2 = generate_curved_road(start2, 2, length=map_radius * 2 - 6, curvature=0.32, branch_prob=0.15, hex_set=hex_set)
+    start2 = HexCoord(col=2, row=2)
+    roads2 = generate_curved_road_rect(start2, num_cols, num_rows, length=int(num_cols * 1.5), curvature=0.32, branch_prob=0.15)
     for road in roads2:
         road_paths.append(road)
         for h in road:
@@ -299,8 +332,8 @@ def generate_hex_map_data(
                 all_road_hexes.add(h)
 
     # Main road 3: starts from top, goes towards bottom
-    start3 = HexCoord(0, -map_radius + 3)
-    roads3 = generate_curved_road(start3, 5, length=map_radius * 2 - 5, curvature=0.3, branch_prob=0.1, hex_set=hex_set)
+    start3 = HexCoord(col=num_cols // 2, row=0)
+    roads3 = generate_curved_road_rect(start3, num_cols, num_rows, length=num_rows * 2, curvature=0.38, branch_prob=0.1)
     for road in roads3:
         road_paths.append(road)
         for h in road:
@@ -314,39 +347,51 @@ def generate_hex_map_data(
     all_water_hexes = set()
 
     # Pond 1
-    pond1_center = HexCoord(-8, 6)
-    pond1_radius = 3
+    pond1_center = HexCoord(col=num_cols // 4, row=num_rows // 3)
+    pond1_radius_pix = 3.5
     for h in hex_coords:
-        if hex_distance(h, pond1_center) <= pond1_radius:
+        if hex_distance_offset(h, pond1_center) <= pond1_radius_pix:
             all_water_hexes.add(h)
 
     # Pond 2
-    pond2_center = HexCoord(9, -4)
-    pond2_radius = 4
+    pond2_center = HexCoord(col=num_cols * 3 // 4, row=num_rows * 2 // 3)
+    pond2_radius_pix = 4.0
     for h in hex_coords:
-        if hex_distance(h, pond2_center) <= pond2_radius:
+        if hex_distance_offset(h, pond2_center) <= pond2_radius_pix:
             all_water_hexes.add(h)
 
     # Pond 3
-    pond3_center = HexCoord(-3, -9)
-    pond3_radius = 3
+    pond3_center = HexCoord(col=num_cols // 2, row=num_rows // 2)
+    pond3_radius_pix = 2.5
     for h in hex_coords:
-        if hex_distance(h, pond3_center) <= pond3_radius:
+        if hex_distance_offset(h, pond3_center) <= pond3_radius_pix:
             all_water_hexes.add(h)
 
-    # River - winding path
+    # River - winding path from right to left
     river_hexes = []
-    river_current = HexCoord(map_radius - 3, -map_radius + 3)
-    river_dir = 4  # lower left
-    for _ in range(map_radius * 2 - 6):
-        river_hexes.append(river_current)
-        all_water_hexes.add(river_current)
-        # Winding direction changes
-        if random.random() < 0.4:
-            river_dir = (river_dir + random.choice([-1, 0, 1])) % 6
-        river_current = hex_neighbor(river_current, river_dir)
-        if river_current not in hex_set:
+    river_current = HexCoord(col=num_cols - 1, row=num_rows - 2)
+    river_hexes.append(river_current)
+    all_water_hexes.add(river_current)
+
+    for _ in range(num_cols * 2):
+        # Move generally leftward with some randomness
+        neighbors = get_hex_neighbors_offset(river_current, num_cols, num_rows)
+        river_so_far = set(river_hexes)
+
+        # Prefer left-moving neighbors
+        leftish = [n for n in neighbors if n.col < river_current.col and n not in river_so_far]
+        other = [n for n in neighbors if n not in river_so_far and n not in leftish]
+
+        if leftish and random.random() < 0.7:
+            next_river = random.choice(leftish)
+        elif other:
+            next_river = random.choice(other)
+        else:
             break
+
+        river_hexes.append(next_river)
+        all_water_hexes.add(next_river)
+        river_current = next_river
 
     print(f"  Water hexagons: {len(all_water_hexes)}")
 
@@ -361,19 +406,19 @@ def generate_hex_map_data(
         # Fire risk: higher away from water, near top-right
         dist_to_water = float('inf')
         for water_hex in all_water_hexes:
-            dist = hex_distance(hex_coord, water_hex)
+            dist = hex_distance_offset(hex_coord, water_hex)
             if dist < dist_to_water:
                 dist_to_water = dist
 
-        water_factor = min(1.0, dist_to_water / 8.0)
-        pos_factor = (hex_coord.q + map_radius) / (2 * map_radius) * 0.5 + \
-                     (-hex_coord.r + map_radius) / (2 * map_radius) * 0.5
+        water_factor = min(1.0, dist_to_water / 10.0)
+        pos_factor = (hex_coord.col / num_cols) * 0.5 + ((num_rows - hex_coord.row) / num_rows) * 0.5
         fire_risk = 0.1 + 0.7 * water_factor * pos_factor + random.uniform(-0.1, 0.1)
         fire_risk = min(1.0, max(0.0, fire_risk))
 
         # Terrain complexity: more complex near center
-        center_dist = hex_distance(hex_coord, center)
-        terrain_complexity = 0.2 + 0.6 * (1.0 - min(1.0, center_dist / (map_radius * 0.7)))
+        center_dist = hex_distance_offset(hex_coord, HexCoord(col=num_cols//2, row=num_rows//2))
+        max_center_dist = math.sqrt(num_cols**2 + num_rows**2) * math.sqrt(3) / 2
+        terrain_complexity = 0.2 + 0.6 * (1.0 - min(1.0, center_dist / max_center_dist))
         terrain_complexity = min(1.0, max(0.0, terrain_complexity + random.uniform(-0.1, 0.1)))
 
         # Vegetation type
@@ -386,7 +431,7 @@ def generate_hex_map_data(
             vegetation_type = "SHRUB"
 
         # Species densities: higher near water
-        water_attraction = max(0.0, 1.0 - dist_to_water / 6.0)
+        water_attraction = max(0.0, 1.0 - dist_to_water / 8.0)
         rhino_density = 0.05 + 0.85 * water_attraction * random.uniform(0.5, 1.0)
         elephant_density = 0.1 + 0.75 * water_attraction * random.uniform(0.5, 1.0)
         bird_density = 0.2 + 0.6 * random.uniform(0.5, 1.0)
@@ -399,8 +444,8 @@ def generate_hex_map_data(
 
         grids.append({
             "grid_id": grid_id,
-            "hex_q": hex_coord.q,
-            "hex_r": hex_coord.r,
+            "hex_col": hex_coord.col,
+            "hex_row": hex_coord.row,
             "fire_risk": fire_risk,
             "terrain_complexity": terrain_complexity,
             "vegetation_type": vegetation_type,
@@ -408,17 +453,18 @@ def generate_hex_map_data(
         })
 
     # Create map_config
-    road_locations = [[h.q, h.r] for h in all_road_hexes]
-    water_locations = [[h.q, h.r] for h in all_water_hexes]
+    road_locations = [[h.col, h.row] for h in all_road_hexes]
+    water_locations = [[h.col, h.row] for h in all_water_hexes]
 
     data = {
         "map_config": {
-            "map_radius": map_radius,
-            "boundary_type": "HEXAGON",
+            "num_cols": num_cols,
+            "num_rows": num_rows,
+            "boundary_type": "RECTANGULAR_HEX",
             "road_locations": road_locations,
             "water_locations": water_locations
         },
-        "hex_coords": [[h.q, h.r] for h in hex_coords],
+        "hex_coords": [[h.col, h.row] for h in hex_coords],
         "grids": grids,
         "time": {
             "hour_of_day": 22,
@@ -429,8 +475,8 @@ def generate_hex_map_data(
     with open(output_json, 'w', encoding='utf-8') as f:
         json.dump(data, f)
 
-    print(f"Generated hex map data saved to: {output_json}")
-    print(f"  Hexagon radius: {map_radius}")
+    print(f"Generated rectangular hex map data saved to: {output_json}")
+    print(f"  Grid size: {num_cols} cols x {num_rows} rows")
     print(f"  Total hexagons: {len(hex_coords)}")
     print(f"  Road hexagons: {len(road_locations)}")
     print(f"  Water hexagons: {len(water_locations)}")
@@ -442,22 +488,22 @@ def generate_hex_map_data(
 # Visualization
 # ============================================================================
 
-def visualize_hex_map(
+def visualize_rect_hex_map(
     data: dict,
     hex_coords: List[HexCoord],
     road_hexes: Set[HexCoord],
     water_hexes: Set[HexCoord],
-    output_path: str = "hex_map_features.jpg"
+    output_path: str = "rect_hex_map_features.jpg"
 ):
-    """Visualize hexagon map features."""
+    """Visualize rectangular hexagon map features."""
     hex_size = 1.0
 
-    fig, ax = plt.subplots(figsize=(16, 14), dpi=100)
+    fig, ax = plt.subplots(figsize=(18, 14), dpi=100)
 
     patches = []
 
     for hex_coord in hex_coords:
-        x, y = hex_to_pixel(hex_coord, hex_size)
+        x, y = hex_to_pixel_offset(hex_coord, hex_size)
 
         # Determine color
         if hex_coord in water_hexes:
@@ -470,7 +516,7 @@ def visualize_hex_map(
         else:
             color = [0.92, 0.95, 0.90]  # Light background
 
-        # Create hexagon patch
+        # Create hexagon patch (pointy-topped)
         hex_patch = RegularPolygon(
             (x, y),
             numVertices=6,
@@ -496,30 +542,32 @@ def visualize_hex_map(
 
     # Set limits and aspect
     ax.set_aspect('equal')
-    all_x, all_y = zip(*[hex_to_pixel(h, hex_size) for h in hex_coords])
+    all_x, all_y = zip(*[hex_to_pixel_offset(h, hex_size) for h in hex_coords])
     ax.set_xlim(min(all_x) - 2, max(all_x) + 2)
     ax.set_ylim(min(all_y) - 2, max(all_y) + 2)
 
-    ax.set_title(f"Hexagon Grid Map (Radius = {data['map_config']['map_radius']})\n{len(hex_coords)} Hexagons", fontsize=16, pad=20)
-    ax.set_xlabel("Axial Q Coordinate", fontsize=12)
-    ax.set_ylabel("Axial R Coordinate", fontsize=12)
+    num_cols = data["map_config"]["num_cols"]
+    num_rows = data["map_config"]["num_rows"]
+    ax.set_title(f"Rectangular Hexagon Grid\n{num_cols} cols × {num_rows} rows = {len(hex_coords)} hexagons", fontsize=16, pad=20)
+    ax.set_xlabel("Column", fontsize=12)
+    ax.set_ylabel("Row", fontsize=12)
     ax.grid(alpha=0.2, linestyle='--')
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Hex map features saved to: {output_path}")
+    print(f"Rectangular hex map features saved to: {output_path}")
     plt.close(fig)
 
 
-def visualize_risk_heatmap(
+def visualize_rect_risk_heatmap(
     data: dict,
     hex_coords: List[HexCoord],
     road_hexes: Set[HexCoord],
     water_hexes: Set[HexCoord],
     risk_results: List[Any],
-    output_path: str = "hex_risk_heatmap.jpg"
+    output_path: str = "rect_hex_risk_heatmap.jpg"
 ):
-    """Visualize risk heatmap on hex grid."""
+    """Visualize risk heatmap on rectangular hex grid."""
     hex_size = 1.0
 
     fig, ax = plt.subplots(figsize=(18, 14), dpi=100)
@@ -528,7 +576,7 @@ def visualize_risk_heatmap(
     risk_dict = {}
     for idx, result in enumerate(risk_results):
         g_data = data["grids"][idx]
-        hex_coord = HexCoord(g_data["hex_q"], g_data["hex_r"])
+        hex_coord = HexCoord(col=g_data["hex_col"], row=g_data["hex_row"])
         risk_dict[hex_coord] = result.normalized_risk if result.normalized_risk is not None else 0.0
 
     # Custom colormap
@@ -542,10 +590,9 @@ def visualize_risk_heatmap(
     cmap = LinearSegmentedColormap.from_list('risk_gradient', colors)
 
     patches = []
-    facecolors = []
 
     for hex_coord in hex_coords:
-        x, y = hex_to_pixel(hex_coord, hex_size)
+        x, y = hex_to_pixel_offset(hex_coord, hex_size)
 
         # Get risk value
         risk = risk_dict.get(hex_coord, 0.0)
@@ -575,7 +622,6 @@ def visualize_risk_heatmap(
             linewidth=0.3
         )
         patches.append(hex_patch)
-        facecolors.append(facecolor)
 
     # Add all patches
     collection = PatchCollection(patches, match_original=True)
@@ -597,13 +643,15 @@ def visualize_risk_heatmap(
 
     # Set limits and aspect
     ax.set_aspect('equal')
-    all_x, all_y = zip(*[hex_to_pixel(h, hex_size) for h in hex_coords])
+    all_x, all_y = zip(*[hex_to_pixel_offset(h, hex_size) for h in hex_coords])
     ax.set_xlim(min(all_x) - 2, max(all_x) + 2)
     ax.set_ylim(min(all_y) - 2, max(all_y) + 2)
 
-    ax.set_title(f"Risk Heatmap - Hexagon Grid (Radius = {data['map_config']['map_radius']})\n{len(hex_coords)} Hexagons", fontsize=16, pad=20)
-    ax.set_xlabel("Axial Q Coordinate", fontsize=12)
-    ax.set_ylabel("Axial R Coordinate", fontsize=12)
+    num_cols = data["map_config"]["num_cols"]
+    num_rows = data["map_config"]["num_rows"]
+    ax.set_title(f"Risk Heatmap - Rectangular Hexagon Grid\n{num_cols} cols × {num_rows} rows = {len(hex_coords)} hexagons", fontsize=16, pad=20)
+    ax.set_xlabel("Column", fontsize=12)
+    ax.set_ylabel("Row", fontsize=12)
     ax.grid(alpha=0.2, linestyle='--')
 
     plt.tight_layout()
@@ -616,23 +664,24 @@ def visualize_risk_heatmap(
 # Risk Calculation
 # ============================================================================
 
-def calculate_risk_for_hex_map(
+def calculate_risk_for_rect_hex_map(
     data: dict,
     hex_coords: List[HexCoord],
     road_hexes: Set[HexCoord],
     water_hexes: Set[HexCoord]
 ):
-    """Calculate risk for hexagon map."""
-    print("Calculating risk for hex grid...")
+    """Calculate risk for rectangular hexagon map."""
+    print("Calculating risk for rectangular hex grid...")
 
-    map_config = HexMapConfig(
-        map_radius=data["map_config"]["map_radius"],
+    map_config = RectHexMapConfig(
+        num_cols=data["map_config"]["num_cols"],
+        num_rows=data["map_config"]["num_rows"],
         hex_coords=hex_coords,
         road_hexes=road_hexes,
         water_hexes=water_hexes
     )
 
-    distance_calculator = HexDistanceCalculator(map_config)
+    distance_calculator = RectHexDistanceCalculator(map_config)
 
     # Create weight manager
     weight_manager = WeightManager()
@@ -660,13 +709,13 @@ def calculate_risk_for_hex_map(
     }
 
     for g_data in data["grids"]:
-        hex_coord = HexCoord(g_data["hex_q"], g_data["hex_r"])
+        hex_coord = HexCoord(col=g_data["hex_col"], row=g_data["hex_row"])
 
         # Calculate distances
         dist_boundary, dist_road, dist_water = distance_calculator.calculate_distances(hex_coord)
 
         # Create objects - use pixel coordinates for Grid
-        x_pix, y_pix = hex_to_pixel(hex_coord, 1.0)
+        x_pix, y_pix = hex_to_pixel_offset(hex_coord, 1.0)
 
         grid = Grid(
             grid_id=g_data["grid_id"],
@@ -705,27 +754,28 @@ def calculate_risk_for_hex_map(
 def main():
     """Main function."""
     print("="*70)
-    print("  HEXAGON MAP GENERATOR WITH RISK HEATMAP")
+    print("  RECTANGULAR HEXAGON MAP GENERATOR")
     print("="*70)
 
-    # Generate data
-    print("\n[1/4] Generating hex map data...")
-    data, hex_coords, road_hexes, water_hexes = generate_hex_map_data(
-        map_radius=18,
-        output_json="hex_map_data.json"
+    # Generate data - 25 cols x 18 rows (approx 100x50 rectangle scale)
+    print("\n[1/4] Generating rectangular hex map data...")
+    data, hex_coords, road_hexes, water_hexes = generate_rectangular_hex_map_data(
+        num_cols=25,
+        num_rows=18,
+        output_json="rect_hex_map_data.json"
     )
 
     # Visualize map features
-    print("\n[2/4] Visualizing hex map...")
-    visualize_hex_map(data, hex_coords, road_hexes, water_hexes, "hex_map_features.jpg")
+    print("\n[2/4] Visualizing rectangular hex map...")
+    visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, "rect_hex_map_features.jpg")
 
     # Calculate risk
     print("\n[3/4] Calculating risk...")
-    results = calculate_risk_for_hex_map(data, hex_coords, road_hexes, water_hexes)
+    results = calculate_risk_for_rect_hex_map(data, hex_coords, road_hexes, water_hexes)
 
     # Visualize risk heatmap
     print("\n[4/4] Visualizing risk heatmap...")
-    visualize_risk_heatmap(data, hex_coords, road_hexes, water_hexes, results, "hex_risk_heatmap.jpg")
+    visualize_rect_risk_heatmap(data, hex_coords, road_hexes, water_hexes, results, "rect_hex_risk_heatmap.jpg")
 
     # Print summary
     print("\n" + "="*70)
@@ -740,9 +790,9 @@ def main():
         print(f"  High risk cells (>0.7): {high_risk}/{len(norm_risks)}")
     print("="*70)
     print("\nGenerated files:")
-    print("  - hex_map_data.json (hexagon map data)")
-    print("  - hex_map_features.jpg (hexagon map visualization)")
-    print("  - hex_risk_heatmap.jpg (risk heatmap)")
+    print("  - rect_hex_map_data.json (rectangular hex map data)")
+    print("  - rect_hex_map_features.jpg (map visualization)")
+    print("  - rect_hex_risk_heatmap.jpg (risk heatmap)")
 
 
 if __name__ == "__main__":
