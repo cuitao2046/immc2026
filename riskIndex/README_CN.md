@@ -12,7 +12,8 @@
 - **可视化**：风险热力图、组件分析和时间对比
 - **数据生成**：用于测试和验证的合成数据
 - **Wrapper脚本**：基于JSON的配置和数据文件输入输出
-- **地图生成**：正方形和六边形网格地图生成器，包含道路和水源
+- **地图生成**：正方形和六边形网格地图生成器，支持可配置feature
+- **Feature配置**：基于JSON的feature配置（水坑、森林、山地等）
 - **热力图可视化**：从wrapper输出生成风险热力图
 
 ## 项目结构
@@ -33,7 +34,9 @@ riskIndex/
 ├── risk_model_wrapper.py        # JSON文件输入输出的Wrapper脚本
 ├── generate_hex_map.py          # 六边形网格地图生成器
 ├── generate_square_map.py       # 正方形网格地图生成器
+├── convert_map_for_wrapper.py   # 地图数据转换为wrapper格式
 ├── visualize_risk_from_json.py  # 风险热力图可视化工具
+├── map_feature_config.json      # 地图feature配置
 ├── example_data.json            # 示例输入数据
 ├── example_config.json          # 示例配置
 └── example_results.json         # 示例输出结果
@@ -134,6 +137,69 @@ python3 demo_phase6.py
 }
 ```
 
+## 地图Feature配置
+
+使用`map_feature_config.json`配置需要生成哪些地图feature。设置`1`启用，`0`禁用。
+
+### Feature配置格式
+
+```json
+{
+  "features": {
+    "ponds": 1,
+    "large_water": 0,
+    "forest": 1,
+    "shrub": 1,
+    "grassland": 1,
+    "rhino": 1,
+    "elephant": 1,
+    "bird": 1,
+    "roads": 1,
+    "mountain": 0,
+    "hills": 0
+  },
+  "vegetation_distribution": {
+    "grassland_ratio": 0.35,
+    "forest_ratio": 0.40,
+    "shrub_ratio": 0.25
+  },
+  "water_config": {
+    "pond_count": 3,
+    "pond_min_radius": 2.0,
+    "pond_max_radius": 4.0,
+    "large_water_radius": 8.0,
+    "has_river": 1
+  },
+  "road_config": {
+    "main_road_count": 3,
+    "curvature": 0.35,
+    "branch_probability": 0.12
+  },
+  "terrain_config": {
+    "mountain_count": 2,
+    "mountain_radius": 4.0,
+    "hill_count": 5,
+    "hill_radius": 2.5
+  }
+}
+```
+
+### 可用的Feature
+
+| Feature | 说明 |
+|---------|------|
+| `ponds` | 水坑（小型圆形水体） |
+| `large_water` | 大型单一水体（湖泊） |
+| `forest` | 森林植被类型 |
+| `shrub` | 灌木植被类型 |
+| `grassland` | 草地植被类型 |
+| `rhino` | 犀牛物种密度 |
+| `elephant` | 大象物种密度 |
+| `bird` | 鸟类物种密度 |
+| `roads` | 弯曲道路（带分支） |
+| `mountain` | 山地地形（增加地形复杂度） |
+| `hills` | 丘陵地形（中等增加地形复杂度） |
+
 ## 六边形网格地图生成器
 
 生成矩形边界的六边形网格地图，包含弯曲道路和水源特征。
@@ -153,6 +219,7 @@ python3 generate_hex_map.py
 | `--rows` | `-r` | 12 | 六边形网格行数 |
 | `--data` | `-d` | rect_hex_map_data.json | 输出JSON数据文件路径 |
 | `--map-image` | `-m` | rect_hex_map_features.jpg | 输出地图特征图路径 |
+| `--config` | `-f` | map_feature_config.json | Feature配置JSON文件路径 |
 | `--help` | `-h` | - | 显示帮助信息 |
 
 ### 使用示例
@@ -164,18 +231,23 @@ python3 generate_hex_map.py --help
 # 生成20列×15行的地图
 python3 generate_hex_map.py --cols 20 --rows 15
 
+# 使用自定义feature配置生成地图
+python3 generate_hex_map.py --cols 20 --rows 15 --config my_config.json
+
 # 自定义输出文件名
 python3 generate_hex_map.py --cols 25 --rows 18 --data my_map.json --map-image my_map.jpg
 
 # 使用简写参数
-python3 generate_hex_map.py -c 20 -r 15 -d output.json
+python3 generate_hex_map.py -c 20 -r 15 -f my_config.json -d output.json
 ```
 
 ### 特性
 
 - **矩形边界**：六边形网格具有矩形外边界
+- **可配置Feature**：通过JSON配置启用/禁用feature
 - **弯曲道路**：随机游走生成的道路，支持分支
-- **水源特征**：池塘 + 蜿蜒河流
+- **水源特征**：池塘 + 蜿蜒河流 + 大型湖泊
+- **地形特征**：山地和丘陵（新增）
 - **无网格边框**：隐藏六边形边框（linewidth=0）
 - **Even-Q偏移坐标**：使用偏移坐标实现矩形网格布局
 
@@ -194,11 +266,11 @@ python3 generate_square_map.py
 
 | 参数 | 简写 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--cols` | `-c` | 40 | 正方形网格列数 |
-| `--rows` | `-r` | 30 | 正方形网格行数 |
+| `--cols` | `-c` | 30 | 正方形网格列数 |
+| `--rows` | `-r` | 20 | 正方形网格行数 |
 | `--data` | `-d` | square_map_data.json | 输出JSON数据文件路径 |
 | `--map-image` | `-m` | square_map_features.jpg | 输出地图特征图路径 |
-| `--risk-image` | `-k` | square_map_risk.jpg | 输出风险热力图路径 |
+| `--config` | `-f` | map_feature_config.json | Feature配置JSON文件路径 |
 | `--help` | `-h` | - | 显示帮助信息 |
 
 ### 使用示例
@@ -210,9 +282,29 @@ python3 generate_square_map.py --help
 # 生成50列×25行的地图
 python3 generate_square_map.py --cols 50 --rows 25
 
+# 使用自定义feature配置生成地图
+python3 generate_square_map.py --cols 50 --rows 25 --config my_config.json
+
 # 自定义输出文件名
 python3 generate_square_map.py --cols 100 --rows 50 --data my_map.json --map-image my_map.jpg
 ```
+
+## 地图转Wrapper格式工具
+
+将地图生成器输出转换为wrapper格式（重命名`num_cols`/`num_rows`为`map_width`/`map_height`，并确保坐标存在）。
+
+### 基本用法
+
+```bash
+python3 convert_map_for_wrapper.py --input map_data.json --output map_for_wrapper.json
+```
+
+### 命令行参数
+
+| 参数 | 简写 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--input` | `-i` | 必填 | 地图生成器输出的JSON文件 |
+| `--output` | `-o` | 必填 | 用于wrapper的输出JSON文件 |
 
 ## 完整工作流程：地图生成→风险计算→热力图绘制
 
@@ -220,38 +312,25 @@ python3 generate_square_map.py --cols 100 --rows 50 --data my_map.json --map-ima
 
 ### 第1步：生成地图数据
 
-选择正方形或六边形网格：
+选择正方形或六边形网格，可选择使用feature配置：
 
 ```bash
-# 正方形网格地图（100×50）
+# 正方形网格地图（100×50），使用默认feature
 python3 generate_square_map.py --cols 100 --rows 50 --data map_data.json
 
+# 正方形网格地图，使用自定义feature配置
+python3 generate_square_map.py --cols 100 --rows 50 --config map_feature_config.json --data map_data.json
+
 # 或 六边形网格地图（100×50）
-python3 generate_hex_map.py --cols 100 --rows 50 --data map_data.json
+python3 generate_hex_map.py --cols 100 --rows 50 --config map_feature_config.json --data map_data.json
 ```
 
-### 第2步：转换为Wrapper格式（如需要）
+### 第2步：转换为Wrapper格式
 
-地图生成器输出使用`num_cols`/`num_rows`，而wrapper期望使用`map_width`/`map_height`。如需转换：
+地图生成器输出使用`num_cols`/`num_rows`，而wrapper期望使用`map_width`/`map_height`。使用转换脚本：
 
-```python
-import json
-
-with open('map_data.json', 'r') as f:
-    data = json.load(f)
-
-map_config = data['map_config']
-map_config['map_width'] = map_config.pop('num_cols')
-map_config['map_height'] = map_config.pop('num_rows')
-
-for grid in data['grids']:
-    if 'x' not in grid:
-        grid['x'] = grid.get('hex_col', 0)
-    if 'y' not in grid:
-        grid['y'] = grid.get('hex_row', 0)
-
-with open('map_for_wrapper.json', 'w') as f:
-    json.dump(data, f, indent=2)
+```bash
+python3 convert_map_for_wrapper.py --input map_data.json --output map_for_wrapper.json
 ```
 
 ### 第3步：使用Wrapper计算风险
@@ -296,13 +375,13 @@ python3 visualize_risk_from_json.py --results results.json
 | 参数 | 简写 | 默认值 | 说明 |
 |------|------|--------|------|
 | `--results` | `-r` | 必填 | 风险结果JSON文件路径 |
-| `--input` | `-i` | None | 可选的输入数据JSON路径（用于道路/水源叠加） |
+| `--input` | `-i` | None | 可选的输入数据JSON路径（用于feature叠加） |
 | `--output` | `-o` | risk_heatmap_from_json.jpg | 输出热力图路径 |
 | `--grid-type` | `-g` | square | 网格类型：'square' 或 'hex' |
 | `--show-labels` | - | True | 显示风险值标签 |
 | `--no-labels` | - | - | 隐藏风险值标签 |
-| `--show-features` | - | False | 显示道路/水源特征叠加 |
-| `--no-features` | - | - | 隐藏道路/水源特征叠加（默认） |
+| `--show-features` | - | False | 显示feature叠加（道路/水源/山地/丘陵） |
+| `--no-features` | - | - | 隐藏feature叠加（默认） |
 
 ### 使用示例
 
@@ -316,7 +395,7 @@ python3 visualize_risk_from_json.py --results results.json --output heatmap.jpg
 # 六边形网格热力图
 python3 visualize_risk_from_json.py --results results.json --grid-type hex --output hex_heatmap.jpg
 
-# 带道路/水源特征叠加
+# 带所有feature叠加（道路/水源/山地/丘陵）
 python3 visualize_risk_from_json.py --results results.json --input data.json --show-features
 
 # 完整选项：六边形网格、带特征、无标签
@@ -332,6 +411,7 @@ python3 visualize_risk_from_json.py \
 ### 功能特性
 
 - **双网格支持**：正方形和六边形（even-q偏移）网格
+- **多类型Feature叠加**：道路、水源、山地和丘陵叠加
 - **对比度优化标签**：自动选择黑色/白色文本以获得最佳可读性
 - **动态字体大小**：根据网格数量自动调整字体大小
 - **大网格优化**：超过500个网格时自动禁用标签

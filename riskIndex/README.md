@@ -12,7 +12,8 @@ A comprehensive mathematical model for calculating risk coefficients in wildlife
 - **Visualization**: Risk heatmaps, component analysis, and temporal comparisons
 - **Data Generation**: Synthetic data for testing and validation
 - **Wrapper Script**: JSON-based configuration and data file I/O
-- **Map Generation**: Square and hexagon grid map generators with roads/water
+- **Map Generation**: Square and hexagon grid map generators with configurable features
+- **Feature Configuration**: JSON-based feature configuration (ponds, forests, mountains, etc.)
 - **Heatmap Visualization**: Risk heatmap visualization from wrapper output
 
 ## Project Structure
@@ -33,7 +34,9 @@ riskIndex/
 ├── risk_model_wrapper.py        # Wrapper script for JSON file I/O
 ├── generate_hex_map.py          # Hexagon grid map generator
 ├── generate_square_map.py       # Square grid map generator
+├── convert_map_for_wrapper.py   # Convert map data for wrapper
 ├── visualize_risk_from_json.py  # Risk heatmap visualizer
+├── map_feature_config.json      # Map feature configuration
 ├── example_data.json            # Example input data
 ├── example_config.json          # Example configuration
 └── example_results.json         # Example output results
@@ -134,6 +137,69 @@ The model uses a grid-based coordinate system:
 }
 ```
 
+## Map Feature Configuration
+
+Configure which map features to generate using `map_feature_config.json`. Set `1` to enable, `0` to disable.
+
+### Feature Configuration Format
+
+```json
+{
+  "features": {
+    "ponds": 1,
+    "large_water": 0,
+    "forest": 1,
+    "shrub": 1,
+    "grassland": 1,
+    "rhino": 1,
+    "elephant": 1,
+    "bird": 1,
+    "roads": 1,
+    "mountain": 0,
+    "hills": 0
+  },
+  "vegetation_distribution": {
+    "grassland_ratio": 0.35,
+    "forest_ratio": 0.40,
+    "shrub_ratio": 0.25
+  },
+  "water_config": {
+    "pond_count": 3,
+    "pond_min_radius": 2.0,
+    "pond_max_radius": 4.0,
+    "large_water_radius": 8.0,
+    "has_river": 1
+  },
+  "road_config": {
+    "main_road_count": 3,
+    "curvature": 0.35,
+    "branch_probability": 0.12
+  },
+  "terrain_config": {
+    "mountain_count": 2,
+    "mountain_radius": 4.0,
+    "hill_count": 5,
+    "hill_radius": 2.5
+  }
+}
+```
+
+### Available Features
+
+| Feature | Description |
+|---------|-------------|
+| `ponds` | Water ponds (small circular water bodies) |
+| `large_water` | Large single water body (lake) |
+| `forest` | Forest vegetation type |
+| `shrub` | Shrub vegetation type |
+| `grassland` | Grassland vegetation type |
+| `rhino` | Rhino species density |
+| `elephant` | Elephant species density |
+| `bird` | Bird species density |
+| `roads` | Curved roads with branches |
+| `mountain` | Mountain terrain (increases terrain complexity) |
+| `hills` | Hill terrain (moderately increases terrain complexity) |
+
 ## Hexagon Map Generator
 
 Generate rectangular hexagon grid maps with curved roads and water features.
@@ -153,6 +219,7 @@ python3 generate_hex_map.py
 | `--rows` | `-r` | 12 | Number of rows in hex grid |
 | `--data` | `-d` | rect_hex_map_data.json | Output JSON data file path |
 | `--map-image` | `-m` | rect_hex_map_features.jpg | Output map features image path |
+| `--config` | `-f` | map_feature_config.json | Feature configuration JSON file path |
 | `--help` | `-h` | - | Show help message |
 
 ### Examples
@@ -164,18 +231,23 @@ python3 generate_hex_map.py --help
 # Generate 20 cols × 15 rows map
 python3 generate_hex_map.py --cols 20 --rows 15
 
+# Generate with custom feature configuration
+python3 generate_hex_map.py --cols 20 --rows 15 --config my_config.json
+
 # Custom output file names
 python3 generate_hex_map.py --cols 25 --rows 18 --data my_map.json --map-image my_map.jpg
 
 # Using short options
-python3 generate_hex_map.py -c 20 -r 15 -d output.json
+python3 generate_hex_map.py -c 20 -r 15 -f my_config.json -d output.json
 ```
 
 ### Features
 
 - **Rectangular Boundary**: Hexagon grid with rectangular outer boundary
+- **Configurable Features**: Enable/disable features via JSON config
 - **Curved Roads**: Random walk generated roads with branching
-- **Water Features**: Ponds + winding river
+- **Water Features**: Ponds + winding river + large lakes
+- **Terrain Features**: Mountains and hills (new)
 - **No Grid Borders**: Hexagon borders are hidden (linewidth=0)
 - **Even-Q Offset Coordinates**: Uses offset coordinates for rectangular grid layout
 
@@ -194,11 +266,11 @@ python3 generate_square_map.py
 
 | Argument | Short | Default | Description |
 |----------|-------|---------|-------------|
-| `--cols` | `-c` | 40 | Number of columns in square grid |
-| `--rows` | `-r` | 30 | Number of rows in square grid |
+| `--cols` | `-c` | 30 | Number of columns in square grid |
+| `--rows` | `-r` | 20 | Number of rows in square grid |
 | `--data` | `-d` | square_map_data.json | Output JSON data file path |
 | `--map-image` | `-m` | square_map_features.jpg | Output map features image path |
-| `--risk-image` | `-k` | square_map_risk.jpg | Output risk heatmap image path |
+| `--config` | `-f` | map_feature_config.json | Feature configuration JSON file path |
 | `--help` | `-h` | - | Show help message |
 
 ### Examples
@@ -210,9 +282,29 @@ python3 generate_square_map.py --help
 # Generate 50 cols × 25 rows map
 python3 generate_square_map.py --cols 50 --rows 25
 
+# Generate with custom feature configuration
+python3 generate_square_map.py --cols 50 --rows 25 --config my_config.json
+
 # Custom output file names
 python3 generate_square_map.py --cols 100 --rows 50 --data my_map.json --map-image my_map.jpg
 ```
+
+## Map to Wrapper Converter
+
+Convert map generator output to wrapper format (renames `num_cols`/`num_rows` to `map_width`/`map_height` and ensures coordinates exist).
+
+### Basic Usage
+
+```bash
+python3 convert_map_for_wrapper.py --input map_data.json --output map_for_wrapper.json
+```
+
+### Command Line Arguments
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--input` | `-i` | required | Input JSON file from map generator |
+| `--output` | `-o` | required | Output JSON file for wrapper |
 
 ## Complete Workflow: Map → Risk Calculation → Heatmap
 
@@ -220,38 +312,25 @@ This is the recommended workflow for generating risk heatmaps from scratch.
 
 ### Step 1: Generate Map Data
 
-Choose either square or hexagon grid:
+Choose either square or hexagon grid, with optional feature configuration:
 
 ```bash
-# Square grid map (100×50)
+# Square grid map (100×50) with default features
 python3 generate_square_map.py --cols 100 --rows 50 --data map_data.json
 
+# Square grid map with custom feature configuration
+python3 generate_square_map.py --cols 100 --rows 50 --config map_feature_config.json --data map_data.json
+
 # OR Hexagon grid map (100×50)
-python3 generate_hex_map.py --cols 100 --rows 50 --data map_data.json
+python3 generate_hex_map.py --cols 100 --rows 50 --config map_feature_config.json --data map_data.json
 ```
 
-### Step 2: Convert for Wrapper (if needed)
+### Step 2: Convert for Wrapper
 
-The map generators produce files with `num_cols`/`num_rows`. The wrapper expects `map_width`/`map_height`. Convert if needed:
+The map generators produce files with `num_cols`/`num_rows`. The wrapper expects `map_width`/`map_height`. Use the conversion script:
 
-```python
-import json
-
-with open('map_data.json', 'r') as f:
-    data = json.load(f)
-
-map_config = data['map_config']
-map_config['map_width'] = map_config.pop('num_cols')
-map_config['map_height'] = map_config.pop('num_rows')
-
-for grid in data['grids']:
-    if 'x' not in grid:
-        grid['x'] = grid.get('hex_col', 0)
-    if 'y' not in grid:
-        grid['y'] = grid.get('hex_row', 0)
-
-with open('map_for_wrapper.json', 'w') as f:
-    json.dump(data, f, indent=2)
+```bash
+python3 convert_map_for_wrapper.py --input map_data.json --output map_for_wrapper.json
 ```
 
 ### Step 3: Calculate Risk with Wrapper
@@ -296,13 +375,13 @@ python3 visualize_risk_from_json.py --results results.json
 | Argument | Short | Default | Description |
 |----------|-------|---------|-------------|
 | `--results` | `-r` | required | Path to risk results JSON file |
-| `--input` | `-i` | None | Optional path to input data JSON (for road/water overlay) |
+| `--input` | `-i` | None | Optional path to input data JSON (for feature overlay) |
 | `--output` | `-o` | risk_heatmap_from_json.jpg | Output heatmap image path |
 | `--grid-type` | `-g` | square | Grid type: 'square' or 'hex' |
 | `--show-labels` | - | True | Show risk value labels on heatmap |
 | `--no-labels` | - | - | Hide risk value labels |
-| `--show-features` | - | False | Show road/water feature overlays |
-| `--no-features` | - | - | Hide road/water feature overlays (default) |
+| `--show-features` | - | False | Show feature overlays (road/water/mountain/hill) |
+| `--no-features` | - | - | Hide feature overlays (default) |
 
 ### Examples
 
@@ -316,7 +395,7 @@ python3 visualize_risk_from_json.py --results results.json --output heatmap.jpg
 # Hexagon grid heatmap
 python3 visualize_risk_from_json.py --results results.json --grid-type hex --output hex_heatmap.jpg
 
-# With road/water features overlay
+# With all features overlay (road/water/mountain/hill)
 python3 visualize_risk_from_json.py --results results.json --input data.json --show-features
 
 # Full options: hex grid, with features, no labels
@@ -332,6 +411,7 @@ python3 visualize_risk_from_json.py \
 ### Features
 
 - **Dual Grid Support**: Square and hexagon (even-q offset) grids
+- **Multiple Feature Overlays**: Road, water, mountain, and hill overlays
 - **Contrast-Optimized Labels**: Auto-selects black/white text for maximum readability
 - **Dynamic Font Sizing**: Font size adjusts based on grid count
 - **Large Grid Optimization**: Auto-disables labels for grids > 500 cells
