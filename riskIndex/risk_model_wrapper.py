@@ -427,7 +427,8 @@ def create_model_from_config(config_data: ModelConfigData) -> RiskModel:
 
 def save_results_to_json(
     results: List[GridRiskResult],
-    output_filepath: str
+    output_filepath: str,
+    grid_coordinates: Optional[List[Tuple[int, int]]] = None
 ) -> None:
     """
     Save risk calculation results to a JSON file.
@@ -435,17 +436,22 @@ def save_results_to_json(
     Args:
         results: List of GridRiskResult objects
         output_filepath: Path to output JSON file
+        grid_coordinates: Optional list of (x, y) coordinates for each grid
     """
     output_data = {
         "results": []
     }
 
-    for result in results:
+    for idx, result in enumerate(results):
         result_dict = {
             "grid_id": result.grid_id,
             "raw_risk": result.raw_risk,
             "normalized_risk": result.normalized_risk
         }
+
+        # Add coordinates if available
+        if grid_coordinates and idx < len(grid_coordinates):
+            result_dict["x"], result_dict["y"] = grid_coordinates[idx]
 
         if result.components:
             result_dict["components"] = {
@@ -518,9 +524,11 @@ def run_risk_model(
     # Step 5: Convert input data
     print(f"\n[5/6] Converting input data")
     grid_data_list = []
+    grid_coordinates = []
     for grid_input in input_data.grids:
         grid, env, density = convert_grid_input(grid_input, distance_calculator)
         grid_data_list.append((grid, env, density))
+        grid_coordinates.append((grid_input.x, grid_input.y))
     time_context = convert_time_input(input_data.time)
     print(f"  Converted {len(grid_data_list)} grid cells")
 
@@ -532,7 +540,7 @@ def run_risk_model(
     # Save results if output file specified
     if output_file:
         print(f"\nSaving results to: {output_file}")
-        save_results_to_json(results, output_file)
+        save_results_to_json(results, output_file, grid_coordinates)
         print("  Results saved")
 
     # Print summary
