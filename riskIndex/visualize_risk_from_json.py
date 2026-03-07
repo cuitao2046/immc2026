@@ -178,7 +178,7 @@ def visualize_risk_heatmap_square(
     input_data: Optional[Dict[str, Any]] = None,
     output_path: str = "risk_heatmap_from_json.jpg",
     show_labels: bool = True,
-    show_features: bool = True
+    show_features: bool = False
 ):
     """
     Visualize risk heatmap with square grid.
@@ -379,7 +379,7 @@ def visualize_risk_heatmap_hex(
     input_data: Optional[Dict[str, Any]] = None,
     output_path: str = "risk_heatmap_from_json.jpg",
     show_labels: bool = True,
-    show_features: bool = True
+    show_features: bool = False
 ):
     """
     Visualize risk heatmap with hexagon grid (even-q offset coordinates).
@@ -622,20 +622,20 @@ def main():
     parser.add_argument(
         "--show-features",
         action="store_true",
-        default=True,
-        help="Show road/water feature overlays (default: True)"
+        help="Show road/water feature overlays"
     )
     parser.add_argument(
         "--no-features",
         action="store_true",
-        help="Hide road/water feature overlays"
+        help="Hide road/water feature overlays (default)"
     )
 
     args = parser.parse_args()
 
     # Determine final flag values
     show_labels = args.show_labels and not args.no_labels
-    show_features = args.show_features and not args.no_features
+    # Default: no features unless --show-features is specified
+    show_features = args.show_features
 
     print("="*70)
     print("  RISK HEATMAP VISUALIZER")
