@@ -6,10 +6,14 @@ A comprehensive mathematical model for calculating risk coefficients in wildlife
 
 - **Core Risk Model**: Human risk, Environmental risk, Species density calculations
 - **Temporal Factors**: Diurnal and seasonal risk variations
+- **Automatic Distance Calculation**: Auto-calculate distances from grid coordinates
 - **Spatial-Temporal Risk Field**: Continuous interpolation across space and time
 - **DSSA Algorithm**: Drone Swarm Scheduling Algorithm for patrol optimization
 - **Visualization**: Risk heatmaps, component analysis, and temporal comparisons
 - **Data Generation**: Synthetic data for testing and validation
+- **Wrapper Script**: JSON-based configuration and data file I/O
+- **Map Generation**: Square and hexagon grid map generators with roads/water
+- **Heatmap Visualization**: Risk heatmap visualization from wrapper output
 
 ## Project Structure
 
@@ -25,10 +29,24 @@ riskIndex/
 ├── tests/                 # Unit tests
 ├── examples/              # Example scripts
 ├── plots/                 # Generated plots
-└── demo_phase*.py         # Phase demonstration scripts
+├── demo_phase*.py              # Phase demonstration scripts
+├── risk_model_wrapper.py        # Wrapper script for JSON file I/O
+├── generate_hex_map.py          # Hexagon grid map generator
+├── generate_square_map.py       # Square grid map generator
+├── visualize_risk_from_json.py  # Risk heatmap visualizer
+├── example_data.json            # Example input data
+├── example_config.json          # Example configuration
+└── example_results.json         # Example output results
 ```
 
 ## Quick Start
+
+### Using the Wrapper Script
+
+```bash
+# Run with example data
+python3 risk_model_wrapper.py --data example_data.json --config example_config.json --output results.json
+```
 
 ### Run All Demos
 
@@ -51,6 +69,273 @@ python3 demo_phase5.py
 # Phase 6: Advanced Features (IMMC Enhancements)
 python3 demo_phase6.py
 ```
+
+## Coordinate System
+
+The model uses a grid-based coordinate system:
+- **Origin**: Bottom-left grid cell center
+- **X-axis**: Increases to the right (column index)
+- **Y-axis**: Increases upward (row index)
+- **Distance Calculation**: Euclidean distance used for automatic distance computation
+
+## Wrapper Script Usage
+
+### Input Data Format (`data.json`)
+
+```json
+{
+  "map_config": {
+    "map_width": 10,
+    "map_height": 6,
+    "boundary_type": "RECTANGLE",
+    "road_locations": [[2, 3], [5, 7]],
+    "water_locations": [[1, 1], [8, 5]]
+  },
+  "grids": [
+    {
+      "grid_id": "A01",
+      "x": 0,
+      "y": 0,
+      "fire_risk": 0.8,
+      "terrain_complexity": 0.7,
+      "vegetation_type": "FOREST",
+      "species_densities": {
+        "rhino": 0.9,
+        "elephant": 0.7,
+        "bird": 0.5
+      }
+    }
+  ],
+  "time": {
+    "hour_of_day": 22,
+    "season": "RAINY"
+  }
+}
+```
+
+### Configuration Format (`config.json`)
+
+```json
+{
+  "risk_weights": {
+    "human_weight": 0.4,
+    "environmental_weight": 0.3,
+    "density_weight": 0.3
+  },
+  "human_risk_weights": {
+    "boundary_weight": 0.4,
+    "road_weight": 0.35,
+    "water_weight": 0.25
+  },
+  "environmental_risk_weights": {
+    "fire_weight": 0.6,
+    "terrain_weight": 0.4
+  }
+}
+```
+
+## Hexagon Map Generator
+
+Generate rectangular hexagon grid maps with curved roads and water features.
+
+### Basic Usage
+
+```bash
+# Generate map with default settings (15 cols × 12 rows)
+python3 generate_hex_map.py
+```
+
+### Command Line Arguments
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--cols` | `-c` | 15 | Number of columns in hex grid |
+| `--rows` | `-r` | 12 | Number of rows in hex grid |
+| `--data` | `-d` | rect_hex_map_data.json | Output JSON data file path |
+| `--map-image` | `-m` | rect_hex_map_features.jpg | Output map features image path |
+| `--help` | `-h` | - | Show help message |
+
+### Examples
+
+```bash
+# Show help
+python3 generate_hex_map.py --help
+
+# Generate 20 cols × 15 rows map
+python3 generate_hex_map.py --cols 20 --rows 15
+
+# Custom output file names
+python3 generate_hex_map.py --cols 25 --rows 18 --data my_map.json --map-image my_map.jpg
+
+# Using short options
+python3 generate_hex_map.py -c 20 -r 15 -d output.json
+```
+
+### Features
+
+- **Rectangular Boundary**: Hexagon grid with rectangular outer boundary
+- **Curved Roads**: Random walk generated roads with branching
+- **Water Features**: Ponds + winding river
+- **No Grid Borders**: Hexagon borders are hidden (linewidth=0)
+- **Even-Q Offset Coordinates**: Uses offset coordinates for rectangular grid layout
+
+## Square Map Generator
+
+Generate square grid maps with curved roads and water features.
+
+### Basic Usage
+
+```bash
+# Generate map with default settings (40 cols × 30 rows)
+python3 generate_square_map.py
+```
+
+### Command Line Arguments
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--cols` | `-c` | 40 | Number of columns in square grid |
+| `--rows` | `-r` | 30 | Number of rows in square grid |
+| `--data` | `-d` | square_map_data.json | Output JSON data file path |
+| `--map-image` | `-m` | square_map_features.jpg | Output map features image path |
+| `--risk-image` | `-k` | square_map_risk.jpg | Output risk heatmap image path |
+| `--help` | `-h` | - | Show help message |
+
+### Examples
+
+```bash
+# Show help
+python3 generate_square_map.py --help
+
+# Generate 50 cols × 25 rows map
+python3 generate_square_map.py --cols 50 --rows 25
+
+# Custom output file names
+python3 generate_square_map.py --cols 100 --rows 50 --data my_map.json --map-image my_map.jpg
+```
+
+## Complete Workflow: Map → Risk Calculation → Heatmap
+
+This is the recommended workflow for generating risk heatmaps from scratch.
+
+### Step 1: Generate Map Data
+
+Choose either square or hexagon grid:
+
+```bash
+# Square grid map (100×50)
+python3 generate_square_map.py --cols 100 --rows 50 --data map_data.json
+
+# OR Hexagon grid map (100×50)
+python3 generate_hex_map.py --cols 100 --rows 50 --data map_data.json
+```
+
+### Step 2: Convert for Wrapper (if needed)
+
+The map generators produce files with `num_cols`/`num_rows`. The wrapper expects `map_width`/`map_height`. Convert if needed:
+
+```python
+import json
+
+with open('map_data.json', 'r') as f:
+    data = json.load(f)
+
+map_config = data['map_config']
+map_config['map_width'] = map_config.pop('num_cols')
+map_config['map_height'] = map_config.pop('num_rows')
+
+for grid in data['grids']:
+    if 'x' not in grid:
+        grid['x'] = grid.get('hex_col', 0)
+    if 'y' not in grid:
+        grid['y'] = grid.get('hex_row', 0)
+
+with open('map_for_wrapper.json', 'w') as f:
+    json.dump(data, f, indent=2)
+```
+
+### Step 3: Calculate Risk with Wrapper
+
+```bash
+python3 risk_model_wrapper.py \
+    --data map_for_wrapper.json \
+    --output risk_results.json
+```
+
+### Step 4: Generate Risk Heatmap
+
+```bash
+# Square grid heatmap (default)
+python3 visualize_risk_from_json.py \
+    --results risk_results.json \
+    --input map_for_wrapper.json \
+    --output risk_heatmap.jpg \
+    --grid-type square
+
+# OR Hexagon grid heatmap
+python3 visualize_risk_from_json.py \
+    --results risk_results.json \
+    --input map_for_wrapper.json \
+    --output risk_heatmap.jpg \
+    --grid-type hex
+```
+
+## Risk Heatmap Visualizer
+
+Generate risk heatmaps from wrapper script output. Supports both square and hexagon grids.
+
+### Basic Usage
+
+```bash
+# Generate heatmap with default settings (square grid, no features)
+python3 visualize_risk_from_json.py --results results.json
+```
+
+### Command Line Arguments
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--results` | `-r` | required | Path to risk results JSON file |
+| `--input` | `-i` | None | Optional path to input data JSON (for road/water overlay) |
+| `--output` | `-o` | risk_heatmap_from_json.jpg | Output heatmap image path |
+| `--grid-type` | `-g` | square | Grid type: 'square' or 'hex' |
+| `--show-labels` | - | True | Show risk value labels on heatmap |
+| `--no-labels` | - | - | Hide risk value labels |
+| `--show-features` | - | False | Show road/water feature overlays |
+| `--no-features` | - | - | Hide road/water feature overlays (default) |
+
+### Examples
+
+```bash
+# Show help
+python3 visualize_risk_from_json.py --help
+
+# Basic square grid heatmap
+python3 visualize_risk_from_json.py --results results.json --output heatmap.jpg
+
+# Hexagon grid heatmap
+python3 visualize_risk_from_json.py --results results.json --grid-type hex --output hex_heatmap.jpg
+
+# With road/water features overlay
+python3 visualize_risk_from_json.py --results results.json --input data.json --show-features
+
+# Full options: hex grid, with features, no labels
+python3 visualize_risk_from_json.py \
+    --results results.json \
+    --input data.json \
+    --output full_heatmap.jpg \
+    --grid-type hex \
+    --show-features \
+    --no-labels
+```
+
+### Features
+
+- **Dual Grid Support**: Square and hexagon (even-q offset) grids
+- **Contrast-Optimized Labels**: Auto-selects black/white text for maximum readability
+- **Dynamic Font Sizing**: Font size adjusts based on grid count
+- **Large Grid Optimization**: Auto-disables labels for grids > 500 cells
+- **No Borders**: Grid cells are borderless for seamless appearance
 
 ## Model Overview
 

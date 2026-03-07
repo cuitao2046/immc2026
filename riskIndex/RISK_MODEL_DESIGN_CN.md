@@ -279,9 +279,18 @@ Season {
 }
 ```
 
-### 9.2 网格数据类
+### 9.2 坐标系
 
-#### Grid（输入
+模型使用基于网格的坐标系：
+
+- **原点**：左下角网格单元中心
+- **X轴**：向右增大（列索引，从0开始）
+- **Y轴**：向上增大（行索引，从0开始）
+- **距离度量**：所有距离计算使用欧氏距离
+
+### 9.3 网格数据类
+
+#### Grid（输入 - 核心模型）
 ```
 @dataclass
 Grid {
@@ -294,7 +303,55 @@ Grid {
 }
 ```
 
-### 9.3 物种数据类
+#### GridInputData（Wrapper - 自动距离计算）
+```
+@dataclass
+GridInputData {
+    grid_id: str                    // 唯一标识符（如 "A12"）
+    x: int                          // 列索引（从0开始）
+    y: int                          // 行索引（从0开始）
+    fire_risk: float                 // 火灾风险指数 [0,1]
+    terrain_complexity: float          // 地形复杂度 [0,1]
+    vegetation_type: str             // 植被类型
+    species_densities: Dict[str, float]  // 物种密度
+}
+```
+
+### 9.4 地图配置
+
+```
+@dataclass
+MapConfig {
+    map_width: int                   // 列数
+    map_height: int                  // 行数
+    boundary_type: str               // "RECTANGLE"
+    road_locations: List[Tuple[int, int]]   // 道路位置，格式为 (x, y)
+    water_locations: List[Tuple[int, int]]  // 水源位置，格式为 (x, y)
+}
+```
+
+### 9.5 距离计算
+
+距离从网格坐标自动计算：
+
+**到边界的距离（矩形）：**
+```
+dist_left = x
+dist_right = (map_width - 1) - x
+dist_bottom = y
+dist_top = (map_height - 1) - y
+
+min_dist_grid = min(dist_left, dist_right, dist_bottom, dist_top)
+normalized_dist = min_dist_grid / max_possible_dist
+distance_to_boundary = 1.0 - normalized_dist  // 越近风险越高
+```
+
+**到特征的距离（道路/水源）：**
+```
+distance_to_feature = 1.0 - (min_euclidean_distance / max_possible_distance)
+```
+
+### 9.6 物种数据类
 
 #### Species
 ```
@@ -315,7 +372,7 @@ SpeciesDensity {
 }
 ```
 
-### 9.4 环境数据类
+### 9.7 环境数据类
 
 #### Environment
 ```
@@ -327,7 +384,7 @@ Environment {
 }
 ```
 
-### 9.5 时间上下文类
+### 9.8 时间上下文类
 
 #### TimeContext
 ```
@@ -342,9 +399,9 @@ TimeContext {
 }
 ```
 
-### 9.6 输入字段摘要
+### 9.9 输入字段摘要
 
-#### 网格空间数据
+#### 网格空间数据（核心模型）
 
 | 字段 | 类型 | 范围 | 描述 |
 |------|------|------|------|
@@ -354,6 +411,24 @@ TimeContext {
 | distance_to_boundary | float | [0,1] | 到保护区边界的归一化距离（0=在边界，1=最远） |
 | distance_to_road | float | [0,1] | 到最近道路的归一化距离（0=在路边，1=最远） |
 | distance_to_water | float | [0,1] | 到最近水源的归一化距离 |
+
+#### 网格空间数据（Wrapper - 自动距离计算）
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| grid_id | string | - | 唯一标识符（如 "A12"） |
+| x | int | ≥ 0 | 列索引（从0开始，从左起） |
+| y | int | ≥ 0 | 行索引（从0开始，从下起） |
+
+#### 地图配置
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| map_width | int | ≥ 1 | 网格列数 |
+| map_height | int | ≥ 1 | 网格行数 |
+| boundary_type | string | - | 边界类型（"RECTANGLE"） |
+| road_locations | List[[x,y]] | - | 道路位置的网格坐标列表 |
+| water_locations | List[[x,y]] | - | 水源位置的网格坐标列表 |
 
 #### 环境数据
 
