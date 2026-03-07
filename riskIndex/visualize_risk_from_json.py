@@ -363,7 +363,6 @@ def visualize_risk_heatmap_square(
 
     # Create visualization
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
-    patches = []
 
     for y in range(num_rows):
         for x in range(num_cols):
@@ -377,12 +376,10 @@ def visualize_risk_heatmap_square(
                 square_size,
                 square_size,
                 facecolor=facecolor,
-                linewidth=0
+                linewidth=0,
+                antialiased=False
             )
-            patches.append(square_patch)
-
-    collection = PatchCollection(patches, match_original=True)
-    ax.add_collection(collection)
+            ax.add_patch(square_patch)
 
     # Add risk value labels
     if actual_show_labels:
@@ -567,7 +564,6 @@ def visualize_risk_heatmap_hex(
 
     # Create visualization
     fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
-    patches = []
 
     for (x, y), data in grid_data.items():
         risk = data["risk"]
@@ -577,19 +573,17 @@ def visualize_risk_heatmap_hex(
         px, py = hex_to_pixel_offset(x, y, hex_size)
 
         # Create hexagon patch (pointy-topped)
-        # Use 0.95*size to ensure no overlap, orientation=pi/2 for proper alignment
+        # Use exact radius, add each patch individually to avoid PatchCollection issues
         hex_patch = RegularPolygon(
             (px, py),
             numVertices=6,
-            radius=hex_size * 0.95,
+            radius=hex_size,
             orientation=math.pi/2,  # Pointy-topped with proper orientation
             facecolor=facecolor,
-            linewidth=0
+            linewidth=0,
+            antialiased=False
         )
-        patches.append(hex_patch)
-
-    collection = PatchCollection(patches, match_original=True)
-    ax.add_collection(collection)
+        ax.add_patch(hex_patch)
 
     # Add risk value labels
     if actual_show_labels:
