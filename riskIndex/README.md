@@ -6,10 +6,12 @@ A comprehensive mathematical model for calculating risk coefficients in wildlife
 
 - **Core Risk Model**: Human risk, Environmental risk, Species density calculations
 - **Temporal Factors**: Diurnal and seasonal risk variations
+- **Automatic Distance Calculation**: Auto-calculate distances from grid coordinates
 - **Spatial-Temporal Risk Field**: Continuous interpolation across space and time
 - **DSSA Algorithm**: Drone Swarm Scheduling Algorithm for patrol optimization
 - **Visualization**: Risk heatmaps, component analysis, and temporal comparisons
 - **Data Generation**: Synthetic data for testing and validation
+- **Wrapper Script**: JSON-based configuration and data file I/O
 
 ## Project Structure
 
@@ -25,10 +27,21 @@ riskIndex/
 ├── tests/                 # Unit tests
 ├── examples/              # Example scripts
 ├── plots/                 # Generated plots
-└── demo_phase*.py         # Phase demonstration scripts
+├── demo_phase*.py         # Phase demonstration scripts
+├── risk_model_wrapper.py   # Wrapper script for JSON file I/O
+├── example_data.json     # Example input data
+├── example_config.json   # Example configuration
+└── example_results.json  # Example output results
 ```
 
 ## Quick Start
+
+### Using the Wrapper Script
+
+```bash
+# Run with example data
+python3 risk_model_wrapper.py --data example_data.json --config example_config.json --output results.json
+```
 
 ### Run All Demos
 
@@ -50,6 +63,70 @@ python3 demo_phase5.py
 
 # Phase 6: Advanced Features (IMMC Enhancements)
 python3 demo_phase6.py
+```
+
+## Coordinate System
+
+The model uses a grid-based coordinate system:
+- **Origin**: Bottom-left grid cell center
+- **X-axis**: Increases to the right (column index)
+- **Y-axis**: Increases upward (row index)
+- **Distance Calculation**: Euclidean distance used for automatic distance computation
+
+## Wrapper Script Usage
+
+### Input Data Format (`data.json`)
+
+```json
+{
+  "map_config": {
+    "map_width": 10,
+    "map_height": 6,
+    "boundary_type": "RECTANGLE",
+    "road_locations": [[2, 3], [5, 7]],
+    "water_locations": [[1, 1], [8, 5]]
+  },
+  "grids": [
+    {
+      "grid_id": "A01",
+      "x": 0,
+      "y": 0,
+      "fire_risk": 0.8,
+      "terrain_complexity": 0.7,
+      "vegetation_type": "FOREST",
+      "species_densities": {
+        "rhino": 0.9,
+        "elephant": 0.7,
+        "bird": 0.5
+      }
+    }
+  ],
+  "time": {
+    "hour_of_day": 22,
+    "season": "RAINY"
+  }
+}
+```
+
+### Configuration Format (`config.json`)
+
+```json
+{
+  "risk_weights": {
+    "human_weight": 0.4,
+    "environmental_weight": 0.3,
+    "density_weight": 0.3
+  },
+  "human_risk_weights": {
+    "boundary_weight": 0.4,
+    "road_weight": 0.35,
+    "water_weight": 0.25
+  },
+  "environmental_risk_weights": {
+    "fire_weight": 0.6,
+    "terrain_weight": 0.4
+  }
+}
 ```
 
 ## Model Overview

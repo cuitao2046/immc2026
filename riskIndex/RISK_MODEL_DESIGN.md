@@ -279,9 +279,18 @@ Season {
 }
 ```
 
-### 9.2 Grid Data Class
+### 9.2 Coordinate System
 
-#### Grid (Input
+The model uses a grid-based coordinate system:
+
+- **Origin**: Bottom-left grid cell center
+- **X-axis**: Increases to the right (column index, 0-based)
+- **Y-axis**: Increases upward (row index, 0-based)
+- **Distance Metric**: Euclidean distance used for all distance calculations
+
+### 9.3 Grid Data Class
+
+#### Grid (Input - Core Model)
 ```
 @dataclass
 Grid {
@@ -294,7 +303,55 @@ Grid {
 }
 ```
 
-### 9.3 Species Data Classes
+#### GridInputData (Wrapper - Auto Distance Calculation)
+```
+@dataclass
+GridInputData {
+    grid_id: str                    # Unique identifier (e.g., "A12")
+    x: int                          # Column index (0-based)
+    y: int                          # Row index (0-based)
+    fire_risk: float                 # Fire risk index [0,1]
+    terrain_complexity: float          # Terrain complexity [0,1]
+    vegetation_type: str             # Vegetation type
+    species_densities: Dict[str, float]  # Species densities
+}
+```
+
+### 9.4 Map Configuration
+
+```
+@dataclass
+MapConfig {
+    map_width: int                   # Number of columns
+    map_height: int                  # Number of rows
+    boundary_type: str               # "RECTANGLE"
+    road_locations: List[Tuple[int, int]]   # Road positions as (x, y)
+    water_locations: List[Tuple[int, int]]  # Water source positions as (x, y)
+}
+```
+
+### 9.5 Distance Calculation
+
+Distances are automatically calculated from grid coordinates:
+
+**Distance to Boundary (Rectangular):**
+```
+dist_left = x
+dist_right = (map_width - 1) - x
+dist_bottom = y
+dist_top = (map_height - 1) - y
+
+min_dist_grid = min(dist_left, dist_right, dist_bottom, dist_top)
+normalized_dist = min_dist_grid / max_possible_dist
+distance_to_boundary = 1.0 - normalized_dist  # Closer = higher risk
+```
+
+**Distance to Feature (Road/Water):**
+```
+distance_to_feature = 1.0 - (min_euclidean_distance / max_possible_distance)
+```
+
+### 9.6 Species Data Classes
 
 #### Species
 ```
@@ -315,7 +372,7 @@ SpeciesDensity {
 }
 ```
 
-### 9.4 Environment Data Class
+### 9.7 Environment Data Class
 
 #### Environment
 ```
@@ -327,7 +384,7 @@ Environment {
 }
 ```
 
-### 9.5 Time Context Class
+### 9.8 Time Context Class
 
 #### TimeContext
 ```
@@ -342,9 +399,9 @@ TimeContext {
 }
 ```
 
-### 9.6 Summary of Input Fields
+### 9.9 Summary of Input Fields
 
-#### Grid Spatial Data
+#### Grid Spatial Data (Core Model)
 
 | Field | Type | Range | Description |
 |-------|------|-------|-------------|
@@ -354,6 +411,24 @@ TimeContext {
 | distance_to_boundary | float | [0,1] | Normalized distance to protected area boundary (0=at boundary, 1=farthest) |
 | distance_to_road | float | [0,1] | Normalized distance to nearest road (0=at road, 1=farthest) |
 | distance_to_water | float | [0,1] | Normalized distance to nearest water source |
+
+#### Grid Spatial Data (Wrapper with Auto Distance)
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| grid_id | string | - | Unique identifier (e.g., "A12") |
+| x | int | ≥ 0 | Column index (0-based, from left) |
+| y | int | ≥ 0 | Row index (0-based, from bottom) |
+
+#### Map Configuration
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| map_width | int | ≥ 1 | Number of columns in grid |
+| map_height | int | ≥ 1 | Number of rows in grid |
+| boundary_type | string | - | Boundary type ("RECTANGLE") |
+| road_locations | List[[x,y]] | - | Road positions as grid coordinates |
+| water_locations | List[[x,y]] | - | Water source positions as grid coordinates |
 
 #### Environmental Data
 
