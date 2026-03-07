@@ -1,0 +1,69 @@
+{
+  "results": [
+    {
+      "grid_id": "A01",
+      "raw_risk": 1.380444,
+      "normalized_risk": 1.0,
+      "components": {
+        "human_risk": 0.92,
+        "environmental_risk": 0.76,
+        "density_value": 0.963,
+        "diurnal_factor": 1.3,
+        "seasonal_factor": 1.2,
+        "temporal_factor": 1.56
+      }
+    },
+    {
+      "grid_id": "B03",
+      "raw_risk": 1.05066,
+      "normalized_risk": 0.7255258374448195,
+      "components": {
+        "human_risk": 0.7650000000000001,
+        "environmental_risk": 0.46,
+        "density_value": 0.7649999999999999,
+        "diurnal_factor": 1.3,
+        "seasonal_factor": 1.2,
+        "temporal_factor": 1.56
+      }
+    },
+    {
+      "grid_id": "C05",
+      "raw_risk": 0.762528,
+      "normalized_risk": 0.48571799532588944,
+      "components": {
+        "human_risk": 0.565,
+        "environmental_risk": 0.3,
+        "density_value": 0.5760000000000001,
+        "diurnal_factor": 1.3,
+        "seasonal_factor": 1.2,
+        "temporal_factor": 1.56
+      }
+    },
+    {
+      "grid_id": "D07",
+      "raw_risk": 0.44163600000000003,
+      "normalized_risk": 0.2186445079200208,
+      "components": {
+        "human_risk": 0.29000000000000004,
+        "environmental_risk": 0.2,
+        "density_value": 0.357,
+        "diurnal_factor": 1.3,
+        "seasonal_factor": 1.2,
+        "temporal_factor": 1.56
+      }
+    },
+    {
+      "grid_id": "E09",
+      "raw_risk": 0.17893200000000004,
+      "normalized_risk": 0.0,
+      "components": {
+        "human_risk": 0.09250000000000001,
+        "environmental_risk": 0.1,
+        "density_value": 0.15900000000000003,
+        "diurnal_factor": 1.3,
+        "seasonal_factor": 1.2,
+        "temporal_factor": 1.56
+      }
+    }
+  ]
+}

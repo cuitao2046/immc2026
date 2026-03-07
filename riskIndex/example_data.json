@@ -1,0 +1,88 @@
+{
+  "grids": [
+    {
+      "grid_id": "A01",
+      "x": 0.0,
+      "y": 0.0,
+      "distance_to_boundary": 0.05,
+      "distance_to_road": 0.1,
+      "distance_to_water": 0.1,
+      "fire_risk": 0.8,
+      "terrain_complexity": 0.7,
+      "vegetation_type": "FOREST",
+      "species_densities": {
+        "rhino": 0.9,
+        "elephant": 0.7,
+        "bird": 0.5
+      }
+    },
+    {
+      "grid_id": "B03",
+      "x": 2.0,
+      "y": 1.0,
+      "distance_to_boundary": 0.2,
+      "distance_to_road": 0.3,
+      "distance_to_water": 0.2,
+      "fire_risk": 0.5,
+      "terrain_complexity": 0.4,
+      "vegetation_type": "SHRUB",
+      "species_densities": {
+        "rhino": 0.6,
+        "elephant": 0.5,
+        "bird": 0.7
+      }
+    },
+    {
+      "grid_id": "C05",
+      "x": 4.0,
+      "y": 2.0,
+      "distance_to_boundary": 0.4,
+      "distance_to_road": 0.5,
+      "distance_to_water": 0.4,
+      "fire_risk": 0.3,
+      "terrain_complexity": 0.3,
+      "vegetation_type": "GRASSLAND",
+      "species_densities": {
+        "rhino": 0.4,
+        "elephant": 0.4,
+        "bird": 0.6
+      }
+    },
+    {
+      "grid_id": "D07",
+      "x": 6.0,
+      "y": 3.0,
+      "distance_to_boundary": 0.7,
+      "distance_to_road": 0.8,
+      "distance_to_water": 0.6,
+      "fire_risk": 0.2,
+      "terrain_complexity": 0.2,
+      "vegetation_type": "GRASSLAND",
+      "species_densities": {
+        "rhino": 0.2,
+        "elephant": 0.3,
+        "bird": 0.4
+      }
+    },
+    {
+      "grid_id": "E09",
+      "x": 8.0,
+      "y": 4.0,
+      "distance_to_boundary": 0.95,
+      "distance_to_road": 0.9,
+      "distance_to_water": 0.85,
+      "fire_risk": 0.1,
+      "terrain_complexity": 0.1,
+      "vegetation_type": "GRASSLAND",
+      "species_densities": {
+        "rhino": 0.1,
+        "elephant": 0.1,
+        "bird": 0.2
+      }
+    }
+  ],
+  "time": {
+    "hour_of_day": 23,
+    "season": "RAINY"
+  }
+}
