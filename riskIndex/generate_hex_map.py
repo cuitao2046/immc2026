@@ -771,29 +771,67 @@ def calculate_risk_for_rect_hex_map(
 
 def main():
     """Main function."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Rectangular Hexagon Map Generator - Generate hex grid maps with risk heatmaps"
+    )
+    parser.add_argument(
+        "--cols", "-c",
+        type=int,
+        default=15,
+        help="Number of columns in hex grid (default: 15)"
+    )
+    parser.add_argument(
+        "--rows", "-r",
+        type=int,
+        default=12,
+        help="Number of rows in hex grid (default: 12)"
+    )
+    parser.add_argument(
+        "--data", "-d",
+        type=str,
+        default="rect_hex_map_data.json",
+        help="Output JSON data file path (default: rect_hex_map_data.json)"
+    )
+    parser.add_argument(
+        "--map-image", "-m",
+        type=str,
+        default="rect_hex_map_features.jpg",
+        help="Output map features image path (default: rect_hex_map_features.jpg)"
+    )
+    parser.add_argument(
+        "--heatmap", "-t",
+        type=str,
+        default="rect_hex_risk_heatmap.jpg",
+        help="Output risk heatmap image path (default: rect_hex_risk_heatmap.jpg)"
+    )
+
+    args = parser.parse_args()
+
     print("="*70)
     print("  RECTANGULAR HEXAGON MAP GENERATOR")
     print("="*70)
 
-    # Generate data - 15 cols x 12 rows (smaller for clear labels)
-    print("\n[1/4] Generating rectangular hex map data...")
+    # Generate data
+    print(f"\n[1/4] Generating rectangular hex map data: {args.cols} cols × {args.rows} rows...")
     data, hex_coords, road_hexes, water_hexes = generate_rectangular_hex_map_data(
-        num_cols=15,
-        num_rows=12,
-        output_json="rect_hex_map_data.json"
+        num_cols=args.cols,
+        num_rows=args.rows,
+        output_json=args.data
     )
 
     # Visualize map features
-    print("\n[2/4] Visualizing rectangular hex map...")
-    visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, "rect_hex_map_features.jpg")
+    print(f"\n[2/4] Visualizing rectangular hex map to: {args.map_image}")
+    visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, args.map_image)
 
     # Calculate risk
     print("\n[3/4] Calculating risk...")
     results = calculate_risk_for_rect_hex_map(data, hex_coords, road_hexes, water_hexes)
 
     # Visualize risk heatmap
-    print("\n[4/4] Visualizing risk heatmap...")
-    visualize_rect_risk_heatmap(data, hex_coords, road_hexes, water_hexes, results, "rect_hex_risk_heatmap.jpg")
+    print(f"\n[4/4] Visualizing risk heatmap to: {args.heatmap}")
+    visualize_rect_risk_heatmap(data, hex_coords, road_hexes, water_hexes, results, args.heatmap)
 
     # Print summary
     print("\n" + "="*70)
