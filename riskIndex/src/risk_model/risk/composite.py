@@ -5,13 +5,28 @@ Composite risk calculator and normalization engine.
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 import math
+import os
 
-from ..core import Grid, SpeciesDensity, Environment, TimeContext
-from ..config import RiskWeights, WeightManager, DEFAULT_RISK_WEIGHTS
-from .human import HumanRiskCalculator
-from .environmental import EnvironmentalRiskCalculator
+from ..core import Grid, SpeciesDensity, Environment, TimeContext, Season
+from ..config import (
+    RiskWeights,
+    WeightManager,
+    DEFAULT_RISK_WEIGHTS,
+    FullModelConfig,
+    SpeciesConfig,
+    DiurnalConfig,
+    SeasonalConfig
+)
+from .human import HumanRiskCalculator, HumanRiskWeights
+from .environmental import EnvironmentalRiskCalculator, EnvironmentalRiskWeights
 from .density import DensityRiskCalculator
-from .temporal import TemporalFactorCalculator
+from .temporal import (
+    TemporalFactorCalculator,
+    DiurnalFactorCalculator,
+    SeasonalFactorCalculator,
+    DiurnalMode
+)
+from ..core.species import Species
 
 
 @dataclass
@@ -334,3 +349,100 @@ class RiskModel:
             ))
 
         return results
+
+    @classmethod
+    def from_config(
+        cls,
+        config: FullModelConfig,
+        normalization_engine: Optional[NormalizationEngine] = None
+    ) -> 'RiskModel':
+        """
+        Create a RiskModel from a FullModelConfig.
+
+        Args:
+            config: Full model configuration
+            normalization_engine: Optional normalization engine
+
+        Returns:
+            RiskModel instance configured with the given settings
+        """
+        # Create weight manager
+        weight_manager = WeightManager(config)
+
+        # Create human risk calculator
+        human_calc = HumanRiskCalculator(
+            weights=config.human_risk_weights
+        )
+
+        # Create environmental risk calculator
+        env_calc = EnvironmentalRiskCalculator(
+            weights=config.environmental_risk_weights
+        )
+
+        # Create density calculator with custom species configs
+        species_dict = {}
+        for sp_config in config.species_configs.values():
+            species_dict[sp_config.name] = Species(
+                name=sp_config.name,
+                weight=sp_config.weight,
+                rainy_season_multiplier=sp_config.rainy_season_multiplier,
+                dry_season_multiplier=sp_config.dry_season_multiplier
+            )
+        density_calc = DensityRiskCalculator(species_config=species_dict)
+
+        # Create diurnal calculator
+        diurnal_mode = DiurnalMode.CONTINUOUS if config.diurnal_config.mode == "continuous" else DiurnalMode.DISCRETE
+        diurnal_calc = DiurnalFactorCalculator(
+            mode=diurnal_mode,
+            daytime_factor=config.diurnal_config.daytime_factor,
+            nighttime_factor=config.diurnal_config.nighttime_factor,
+            gamma=config.diurnal_config.gamma
+        )
+
+        # Create seasonal calculator
+        seasonal_calc = SeasonalFactorCalculator(
+            dry_season_factor=config.seasonal_config.dry_season_factor,
+            rainy_season_factor=config.seasonal_config.rainy_season_factor
+        )
+
+        # Create temporal calculator
+        temporal_calc = TemporalFactorCalculator(
+            diurnal_calculator=diurnal_calc,
+            seasonal_calculator=seasonal_calc
+        )
+
+        # Create composite calculator
+        composite_calc = CompositeRiskCalculator(
+            weight_manager=weight_manager,
+            human_calculator=human_calc,
+            environmental_calculator=env_calc,
+            density_calculator=density_calc,
+            temporal_calculator=temporal_calc
+        )
+
+        return cls(
+            composite_calculator=composite_calc,
+            normalization_engine=normalization_engine
+        )
+
+    @classmethod
+    def from_config_file(
+        cls,
+        filepath: Optional[str] = None,
+        normalization_engine: Optional[NormalizationEngine] = None
+    ) -> 'RiskModel':
+        """
+        Create a RiskModel from a configuration file.
+
+        If no filepath is provided, or the file doesn't exist,
+        uses default configuration.
+
+        Args:
+            filepath: Path to JSON configuration file, or None for default
+            normalization_engine: Optional normalization engine
+
+        Returns:
+            RiskModel instance
+        """
+        config = FullModelConfig.load_or_default(filepath)
+        return cls.from_config(config, normalization_engine)

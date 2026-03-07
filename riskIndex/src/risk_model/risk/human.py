@@ -2,36 +2,10 @@
 Human risk calculator module.
 """
 
-import math
-from dataclasses import dataclass
 from typing import Tuple, Optional
 
 from ..core.grid import Grid
-
-
-@dataclass
-class HumanRiskWeights:
-    """
-    Weights for human risk calculation.
-
-    Attributes:
-        boundary_weight: Weight for proximity to boundary
-        road_weight: Weight for proximity to road
-        water_weight: Weight for proximity to water source
-    """
-    boundary_weight: float = 0.4
-    road_weight: float = 0.35
-    water_weight: float = 0.25
-
-    def __post_init__(self):
-        """Validate weights sum to 1."""
-        total = self.boundary_weight + self.road_weight + self.water_weight
-        if not math.isclose(total, 1.0, rel_tol=1e-9):
-            raise ValueError(
-                f"Weights must sum to 1, got {total} "
-                f"(boundary={self.boundary_weight}, road={self.road_weight}, "
-                f"water={self.water_weight})"
-            )
+from ..config import HumanRiskWeights
 
 
 class HumanRiskCalculator:

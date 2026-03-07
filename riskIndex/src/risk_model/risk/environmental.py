@@ -2,33 +2,10 @@
 Environmental risk calculator module.
 """
 
-import math
-from dataclasses import dataclass
 from typing import Optional
 
 from ..core.environment import Environment
-
-
-@dataclass
-class EnvironmentalRiskWeights:
-    """
-    Weights for environmental risk calculation.
-
-    Attributes:
-        fire_weight: Weight for fire risk
-        terrain_weight: Weight for terrain complexity
-    """
-    fire_weight: float = 0.6
-    terrain_weight: float = 0.4
-
-    def __post_init__(self):
-        """Validate weights sum to 1."""
-        total = self.fire_weight + self.terrain_weight
-        if not math.isclose(total, 1.0, rel_tol=1e-9):
-            raise ValueError(
-                f"Weights must sum to 1, got {total} "
-                f"(fire={self.fire_weight}, terrain={self.terrain_weight})"
-            )
+from ..config import EnvironmentalRiskWeights
 
 
 class EnvironmentalRiskCalculator:
