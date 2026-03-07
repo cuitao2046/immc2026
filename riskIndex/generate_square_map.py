@@ -336,9 +336,13 @@ def generate_square_map_data(
 
                 pond_center = SquareCoord(x=cx, y=cy)
                 pond_radius = random.uniform(pond_min_r, pond_max_r)
-                for c in coords:
-                    if square_distance(c, pond_center) <= pond_radius:
-                        all_water_coords.add(c)
+                # If radius is very small (<= 0.5), only add the center cell
+                if pond_radius <= 0.5:
+                    all_water_coords.add(pond_center)
+                else:
+                    for c in coords:
+                        if square_distance(c, pond_center) <= pond_radius:
+                            all_water_coords.add(c)
 
         # Generate large water body
         if is_feature_enabled(config, "large_water"):
@@ -581,21 +585,33 @@ def visualize_square_map(
     water_coords: Set[SquareCoord],
     mountain_coords: Set[SquareCoord],
     hill_coords: Set[SquareCoord],
-    output_path: str = "square_map_features.jpg"
+    output_path: str = "square_map_features.jpg",
+    show_coordinates: bool = False
 ):
     """Visualize square grid map features."""
     square_size = 1.0
     num_cols = data["map_config"]["num_cols"]
     num_rows = data["map_config"]["num_rows"]
 
+    # Create a lookup for grid data by coordinate
+    grid_lookup = {}
+    for grid in data["grids"]:
+        grid_lookup[(grid["x"], grid["y"])] = grid
+
     fig, ax = plt.subplots(figsize=(16, 12), dpi=100)
 
     patches = []
+    label_data = []
+
+    # Track which features are present
+    has_forest = False
+    has_grassland = False
+    has_shrub = False
 
     for coord in coords:
         x, y = square_to_pixel(coord, square_size)
 
-        # Determine color
+        # Determine color based on priority: water > mountain > hill > road > vegetation
         if coord in water_coords:
             color = [0.3, 0.6, 1.0]  # Blue - water
         elif coord in mountain_coords:
@@ -605,7 +621,21 @@ def visualize_square_map(
         elif coord in road_coords:
             color = [0.7, 0.55, 0.4]  # Brown - road
         else:
-            color = [0.92, 0.95, 0.90]  # Light background
+            # Get vegetation type from grid data
+            grid_data = grid_lookup.get((coord.x, coord.y))
+            if grid_data:
+                veg_type = grid_data.get("vegetation_type", "GRASSLAND")
+                if veg_type == "FOREST":
+                    color = [0.2, 0.6, 0.2]  # Dark green - forest
+                    has_forest = True
+                elif veg_type == "SHRUB":
+                    color = [0.5, 0.7, 0.3]  # Light green - shrub
+                    has_shrub = True
+                else:  # GRASSLAND
+                    color = [0.7, 0.85, 0.5]  # Yellow-green - grassland
+                    has_grassland = True
+            else:
+                color = [0.7, 0.85, 0.5]  # Default to grassland
 
         # Create square patch
         square_patch = Rectangle(
@@ -617,22 +647,43 @@ def visualize_square_map(
             linewidth=0
         )
         patches.append(square_patch)
+        label_data.append((x, y, coord.x, coord.y, color))
 
     # Add all patches
     collection = PatchCollection(patches, match_original=True)
     ax.add_collection(collection)
 
+    # Add coordinate labels if enabled
+    if show_coordinates:
+        total_grids = num_cols * num_rows
+        font_size = 10 if total_grids <= 400 else 8 if total_grids <= 1000 else 6
+        for x, y, cx, cy, color in label_data:
+            text_color = 'white' if sum(color) < 1.5 else 'black'
+            ax.text(
+                x, y,
+                f"({cx},{cy})",
+                ha='center', va='center',
+                color=text_color,
+                fontsize=font_size,
+                fontweight='bold'
+            )
+
     # Add legend
     legend_elements = []
-    if road_coords:
-        legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
     if water_coords:
         legend_elements.append(Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'))
+    if road_coords:
+        legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
     if mountain_coords:
         legend_elements.append(Patch(facecolor=[0.4, 0.4, 0.45], edgecolor='black', label='Mountain'))
     if hill_coords:
         legend_elements.append(Patch(facecolor=[0.55, 0.55, 0.6], edgecolor='black', label='Hill'))
-    legend_elements.append(Patch(facecolor=[0.92, 0.95, 0.90], edgecolor='gray', label='Land'))
+    if has_forest:
+        legend_elements.append(Patch(facecolor=[0.2, 0.6, 0.2], edgecolor='black', label='Forest'))
+    if has_shrub:
+        legend_elements.append(Patch(facecolor=[0.5, 0.7, 0.3], edgecolor='black', label='Shrub'))
+    if has_grassland:
+        legend_elements.append(Patch(facecolor=[0.7, 0.85, 0.5], edgecolor='black', label='Grassland'))
 
     ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
@@ -690,8 +741,21 @@ def main():
         default="map_feature_config.json",
         help="Feature configuration JSON file path (default: map_feature_config.json)"
     )
+    parser.add_argument(
+        "--show-coordinates",
+        action="store_true",
+        help="Show (x,y) coordinate labels on map"
+    )
+    parser.add_argument(
+        "--no-coordinates",
+        action="store_true",
+        help="Hide (x,y) coordinate labels on map (default)"
+    )
 
     args = parser.parse_args()
+
+    # Determine final flag values
+    show_coordinates = args.show_coordinates
 
     print("="*70)
     print("  SQUARE GRID MAP GENERATOR")
@@ -711,7 +775,8 @@ def main():
 
     # Visualize map features
     print(f"\n[2/2] Visualizing square map to: {args.map_image}")
-    visualize_square_map(data, coords, road_coords, water_coords, mountain_coords, hill_coords, args.map_image)
+    print(f"  Settings: coordinates={'ON' if show_coordinates else 'OFF'}")
+    visualize_square_map(data, coords, road_coords, water_coords, mountain_coords, hill_coords, args.map_image, show_coordinates)
 
     # Print summary
     print("\n" + "="*70)

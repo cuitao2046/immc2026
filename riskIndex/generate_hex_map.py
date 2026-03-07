@@ -356,9 +356,13 @@ def generate_rectangular_hex_map_data(
 
                 pond_center = HexCoord(col=cx, row=cy)
                 pond_radius = random.uniform(pond_min_r, pond_max_r)
-                for h in hex_coords:
-                    if hex_distance_offset(h, pond_center) <= pond_radius:
-                        all_water_hexes.add(h)
+                # If radius is very small (<= 0.5), only add the center cell
+                if pond_radius <= 0.5:
+                    all_water_hexes.add(pond_center)
+                else:
+                    for h in hex_coords:
+                        if hex_distance_offset(h, pond_center) <= pond_radius:
+                            all_water_hexes.add(h)
 
         # Generate large water body
         if is_feature_enabled(config, "large_water"):
@@ -604,17 +608,29 @@ def visualize_rect_hex_map(
     water_hexes: Set[HexCoord],
     mountain_hexes: Set[HexCoord],
     hill_hexes: Set[HexCoord],
-    output_path: str = "rect_hex_map_features.jpg"
+    output_path: str = "rect_hex_map_features.jpg",
+    show_coordinates: bool = False
 ):
     """Visualize rectangular hexagon map features."""
     hex_size = 1.0
 
+    # Create a lookup for grid data by coordinate
+    grid_lookup = {}
+    for grid in data["grids"]:
+        grid_lookup[(grid["x"], grid["y"])] = grid
+
     fig, ax = plt.subplots(figsize=(18, 14), dpi=100)
+
+    # Track which features are present
+    has_forest = False
+    has_grassland = False
+    has_shrub = False
+    label_data = []
 
     for hex_coord in hex_coords:
         x, y = hex_to_pixel_offset(hex_coord, hex_size)
 
-        # Determine color
+        # Determine color based on priority: water > mountain > hill > road > vegetation
         if hex_coord in water_hexes:
             color = [0.3, 0.6, 1.0]  # Blue - water
         elif hex_coord in mountain_hexes:
@@ -624,7 +640,21 @@ def visualize_rect_hex_map(
         elif hex_coord in road_hexes:
             color = [0.7, 0.55, 0.4]  # Brown - road
         else:
-            color = [0.92, 0.95, 0.90]  # Light background
+            # Get vegetation type from grid data
+            grid_data = grid_lookup.get((hex_coord.col, hex_coord.row))
+            if grid_data:
+                veg_type = grid_data.get("vegetation_type", "GRASSLAND")
+                if veg_type == "FOREST":
+                    color = [0.2, 0.6, 0.2]  # Dark green - forest
+                    has_forest = True
+                elif veg_type == "SHRUB":
+                    color = [0.5, 0.7, 0.3]  # Light green - shrub
+                    has_shrub = True
+                else:  # GRASSLAND
+                    color = [0.7, 0.85, 0.5]  # Yellow-green - grassland
+                    has_grassland = True
+            else:
+                color = [0.7, 0.85, 0.5]  # Default to grassland
 
         # Create hexagon patch (pointy-topped) - use ax.add_patch directly for no gaps
         hex_patch = RegularPolygon(
@@ -637,18 +667,42 @@ def visualize_rect_hex_map(
             antialiased=False
         )
         ax.add_patch(hex_patch)
+        label_data.append((x, y, hex_coord.col, hex_coord.row, color))
+
+    # Add coordinate labels if enabled
+    if show_coordinates:
+        num_cols = data["map_config"]["num_cols"]
+        num_rows = data["map_config"]["num_rows"]
+        total_grids = num_cols * num_rows
+        font_size = 10 if total_grids <= 400 else 8 if total_grids <= 1000 else 6
+        hex_height = hex_size * math.sqrt(3)
+        for x, y, cx, cy, color in label_data:
+            text_color = 'white' if sum(color) < 1.5 else 'black'
+            ax.text(
+                x, y,
+                f"({cx},{cy})",
+                ha='center', va='center',
+                color=text_color,
+                fontsize=font_size,
+                fontweight='bold'
+            )
 
     # Add legend
     legend_elements = []
-    if road_hexes:
-        legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
     if water_hexes:
         legend_elements.append(Patch(facecolor=[0.3, 0.6, 1.0], edgecolor='black', label='Water'))
+    if road_hexes:
+        legend_elements.append(Patch(facecolor=[0.7, 0.55, 0.4], edgecolor='black', label='Road'))
     if mountain_hexes:
         legend_elements.append(Patch(facecolor=[0.4, 0.4, 0.45], edgecolor='black', label='Mountain'))
     if hill_hexes:
         legend_elements.append(Patch(facecolor=[0.55, 0.55, 0.6], edgecolor='black', label='Hill'))
-    legend_elements.append(Patch(facecolor=[0.92, 0.95, 0.90], edgecolor='gray', label='Land'))
+    if has_forest:
+        legend_elements.append(Patch(facecolor=[0.2, 0.6, 0.2], edgecolor='black', label='Forest'))
+    if has_shrub:
+        legend_elements.append(Patch(facecolor=[0.5, 0.7, 0.3], edgecolor='black', label='Shrub'))
+    if has_grassland:
+        legend_elements.append(Patch(facecolor=[0.7, 0.85, 0.5], edgecolor='black', label='Grassland'))
 
     ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
@@ -708,8 +762,21 @@ def main():
         default="map_feature_config.json",
         help="Feature configuration JSON file path (default: map_feature_config.json)"
     )
+    parser.add_argument(
+        "--show-coordinates",
+        action="store_true",
+        help="Show (x,y) coordinate labels on map"
+    )
+    parser.add_argument(
+        "--no-coordinates",
+        action="store_true",
+        help="Hide (x,y) coordinate labels on map (default)"
+    )
 
     args = parser.parse_args()
+
+    # Determine final flag values
+    show_coordinates = args.show_coordinates
 
     print("="*70)
     print("  RECTANGULAR HEXAGON MAP GENERATOR")
@@ -729,7 +796,8 @@ def main():
 
     # Visualize map features
     print(f"\n[2/2] Visualizing rectangular hex map to: {args.map_image}")
-    visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, mountain_hexes, hill_hexes, args.map_image)
+    print(f"  Settings: coordinates={'ON' if show_coordinates else 'OFF'}")
+    visualize_rect_hex_map(data, hex_coords, road_hexes, water_hexes, mountain_hexes, hill_hexes, args.map_image, show_coordinates)
 
     # Print summary
     print("\n" + "="*70)

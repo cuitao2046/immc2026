@@ -140,7 +140,7 @@ class DistanceCalculator:
     def calculate_distance_to_feature(self, x: int, y: int, feature_locations: List[Tuple[int, int]]) -> float:
         """Calculate normalized distance to nearest feature (road or water)."""
         if not feature_locations:
-            return 0.5
+            return 0.0  # No feature means 0 risk from this feature
 
         min_dist = float('inf')
         for (fx, fy) in feature_locations:
@@ -476,7 +476,8 @@ def save_results_to_json(
 def run_risk_model(
     data_file: str,
     config_file: Optional[str] = None,
-    output_file: Optional[str] = None
+    output_file: Optional[str] = None,
+    use_temporal_factors: bool = False
 ) -> List[GridRiskResult]:
     """
     Run the risk model with data from files.
@@ -485,6 +486,7 @@ def run_risk_model(
         data_file: Path to input data JSON file
         config_file: Optional path to config JSON file
         output_file: Optional path to output JSON file
+        use_temporal_factors: Whether to apply diurnal/seasonal/temporal factors (default: False)
 
     Returns:
         List of GridRiskResult objects
@@ -501,6 +503,7 @@ def run_risk_model(
     print(f"  Roads: {len(input_data.map_config.road_locations)} locations")
     print(f"  Water sources: {len(input_data.map_config.water_locations)} locations")
     print(f"  Time: {input_data.time.hour_of_day:02d}:00, {input_data.time.season} season")
+    print(f"  Temporal factors: {'ENABLED' if use_temporal_factors else 'DISABLED (default)'}")
 
     # Step 2: Create distance calculator
     print(f"\n[2/6] Creating distance calculator")
@@ -534,7 +537,11 @@ def run_risk_model(
 
     # Step 6: Calculate risk
     print(f"\n[6/6] Calculating risk")
-    results = model.calculate_batch(grid_data_list, time_context)
+    results = model.calculate_batch(
+        grid_data_list,
+        time_context,
+        use_temporal_factors=use_temporal_factors
+    )
     print(f"  Calculated risk for {len(results)} grid cells")
 
     # Save results if output file specified
@@ -641,14 +648,28 @@ Example config.json format (all fields optional):
         "--output", "-o",
         help="Path to output results JSON file (optional)"
     )
+    parser.add_argument(
+        "--use-temporal",
+        action="store_true",
+        help="Enable diurnal/seasonal/temporal factors (default: disabled)"
+    )
+    parser.add_argument(
+        "--no-temporal",
+        action="store_true",
+        help="Disable diurnal/seasonal/temporal factors (default)"
+    )
 
     args = parser.parse_args()
+
+    # Determine if temporal factors should be used
+    use_temporal_factors = args.use_temporal and not args.no_temporal
 
     try:
         run_risk_model(
             data_file=args.data,
             config_file=args.config,
-            output_file=args.output
+            output_file=args.output,
+            use_temporal_factors=use_temporal_factors
         )
         return 0
     except Exception as e:

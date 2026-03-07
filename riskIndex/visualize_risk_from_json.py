@@ -234,6 +234,7 @@ def visualize_risk_heatmap_square(
     input_data: Optional[Dict[str, Any]] = None,
     output_path: str = "risk_heatmap_from_json.jpg",
     show_labels: bool = True,
+    show_coordinates: bool = False,
     show_features: bool = False
 ):
     """
@@ -244,6 +245,7 @@ def visualize_risk_heatmap_square(
         input_data: Optional input data with road/water locations
         output_path: Output image path
         show_labels: Whether to show risk value labels
+        show_coordinates: Whether to show (x,y) coordinate labels
         show_features: Whether to overlay road/water features
     """
     results = results_data.get("results", [])
@@ -395,23 +397,61 @@ def visualize_risk_heatmap_square(
             )
             ax.add_patch(square_patch)
 
-    # Add risk value labels
-    if actual_show_labels:
+    # Add labels (risk values and/or coordinates)
+    if actual_show_labels or show_coordinates:
         for (x, y), data in grid_data.items():
             risk = data["risk"]
             facecolor = face_colors.get((x, y), (0.5, 0.5, 0.5))
             text_color = get_contrast_color(facecolor)
 
-            ax.text(
-                x * square_size,
-                y * square_size,
-                f"{risk:.2f}",
-                ha='center',
-                va='center',
-                color=text_color,
-                fontsize=font_size,
-                fontweight='bold'
-            )
+            center_x = x * square_size
+            center_y = y * square_size
+
+            if actual_show_labels and show_coordinates:
+                # Show both: risk above coordinates
+                ax.text(
+                    center_x,
+                    center_y + 0.15,
+                    f"{risk:.2f}",
+                    ha='center',
+                    va='bottom',
+                    color=text_color,
+                    fontsize=font_size * 0.9,
+                    fontweight='bold'
+                )
+                ax.text(
+                    center_x,
+                    center_y - 0.15,
+                    f"({x},{y})",
+                    ha='center',
+                    va='top',
+                    color=text_color,
+                    fontsize=font_size * 0.8
+                )
+            elif actual_show_labels:
+                # Show only risk
+                ax.text(
+                    center_x,
+                    center_y,
+                    f"{risk:.2f}",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=font_size,
+                    fontweight='bold'
+                )
+            elif show_coordinates:
+                # Show only coordinates
+                ax.text(
+                    center_x,
+                    center_y,
+                    f"({x},{y})",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=font_size,
+                    fontweight='bold'
+                )
 
     # Add colorbar
     from matplotlib.cm import ScalarMappable
@@ -455,6 +495,7 @@ def visualize_risk_heatmap_hex(
     input_data: Optional[Dict[str, Any]] = None,
     output_path: str = "risk_heatmap_from_json.jpg",
     show_labels: bool = True,
+    show_coordinates: bool = False,
     show_features: bool = False
 ):
     """
@@ -465,6 +506,7 @@ def visualize_risk_heatmap_hex(
         input_data: Optional input data with road/water locations
         output_path: Output image path
         show_labels: Whether to show risk value labels
+        show_coordinates: Whether to show (x,y) coordinate labels
         show_features: Whether to overlay road/water features
     """
     results = results_data.get("results", [])
@@ -617,25 +659,61 @@ def visualize_risk_heatmap_hex(
         )
         ax.add_patch(hex_patch)
 
-    # Add risk value labels
-    if actual_show_labels:
+    # Add labels (risk values and/or coordinates)
+    if actual_show_labels or show_coordinates:
         for (x, y), data in grid_data.items():
             risk = data["risk"]
             facecolor = face_colors.get((x, y), (0.5, 0.5, 0.5))
             text_color = get_contrast_color(facecolor)
 
             px, py = hex_to_pixel_offset(x, y, hex_size)
+            hex_height = hex_size * math.sqrt(3)
 
-            ax.text(
-                px,
-                py,
-                f"{risk:.2f}",
-                ha='center',
-                va='center',
-                color=text_color,
-                fontsize=font_size,
-                fontweight='bold'
-            )
+            if actual_show_labels and show_coordinates:
+                # Show both: risk above coordinates
+                ax.text(
+                    px,
+                    py + hex_height * 0.15,
+                    f"{risk:.2f}",
+                    ha='center',
+                    va='bottom',
+                    color=text_color,
+                    fontsize=font_size * 0.9,
+                    fontweight='bold'
+                )
+                ax.text(
+                    px,
+                    py - hex_height * 0.15,
+                    f"({x},{y})",
+                    ha='center',
+                    va='top',
+                    color=text_color,
+                    fontsize=font_size * 0.8
+                )
+            elif actual_show_labels:
+                # Show only risk
+                ax.text(
+                    px,
+                    py,
+                    f"{risk:.2f}",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=font_size,
+                    fontweight='bold'
+                )
+            elif show_coordinates:
+                # Show only coordinates
+                ax.text(
+                    px,
+                    py,
+                    f"({x},{y})",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=font_size,
+                    fontweight='bold'
+                )
 
     # Add colorbar
     from matplotlib.cm import ScalarMappable
@@ -726,6 +804,16 @@ def main():
         action="store_true",
         help="Hide road/water feature overlays (default)"
     )
+    parser.add_argument(
+        "--show-coordinates",
+        action="store_true",
+        help="Show (x,y) coordinate labels on heatmap"
+    )
+    parser.add_argument(
+        "--no-coordinates",
+        action="store_true",
+        help="Hide (x,y) coordinate labels on heatmap (default)"
+    )
 
     args = parser.parse_args()
 
@@ -733,6 +821,8 @@ def main():
     show_labels = args.show_labels and not args.no_labels
     # Default: no features unless --show-features is specified
     show_features = args.show_features
+    # Default: no coordinates unless --show-coordinates is specified
+    show_coordinates = args.show_coordinates
 
     print("="*70)
     print("  RISK HEATMAP VISUALIZER")
@@ -754,7 +844,7 @@ def main():
 
     # Generate heatmap
     print(f"\n[3/3] Generating heatmap to: {args.output}")
-    print(f"  Settings: grid-type={args.grid_type}, labels={'ON' if show_labels else 'OFF'}, features={'ON' if show_features else 'OFF'}")
+    print(f"  Settings: grid-type={args.grid_type}, labels={'ON' if show_labels else 'OFF'}, coordinates={'ON' if show_coordinates else 'OFF'}, features={'ON' if show_features else 'OFF'}")
 
     if args.grid_type == 'hex':
         visualize_risk_heatmap_hex(
@@ -762,6 +852,7 @@ def main():
             input_data=input_data,
             output_path=args.output,
             show_labels=show_labels,
+            show_coordinates=show_coordinates,
             show_features=show_features
         )
     else:
@@ -770,6 +861,7 @@ def main():
             input_data=input_data,
             output_path=args.output,
             show_labels=show_labels,
+            show_coordinates=show_coordinates,
             show_features=show_features
         )
 

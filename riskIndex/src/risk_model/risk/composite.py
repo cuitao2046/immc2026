@@ -118,7 +118,8 @@ class CompositeRiskCalculator:
         density: SpeciesDensity,
         time_context: TimeContext,
         poaching_probability: float = 1.0,
-        return_components: bool = False
+        return_components: bool = False,
+        use_temporal_factors: bool = False
     ) -> Tuple[float, Optional[RiskComponents]]:
         """
         Calculate raw (non-normalized) risk for a single grid cell.
@@ -130,6 +131,7 @@ class CompositeRiskCalculator:
             time_context: Time and season context
             poaching_probability: Time-based poaching probability
             return_components: Whether to return individual components
+            use_temporal_factors: Whether to apply diurnal/seasonal/temporal factors (default: False)
 
         Returns:
             Tuple of (raw_risk_value, risk_components if requested)
@@ -145,7 +147,10 @@ class CompositeRiskCalculator:
             weights.density_weight * components.density_value
         )
 
-        raw_risk = base_risk * components.temporal_factor
+        if use_temporal_factors:
+            raw_risk = base_risk * components.temporal_factor
+        else:
+            raw_risk = base_risk
 
         if return_components:
             return raw_risk, components
@@ -296,7 +301,8 @@ class RiskModel:
         self,
         grid_data: List[Tuple[Grid, Environment, SpeciesDensity]],
         time_context: TimeContext,
-        poaching_probability: float = 1.0
+        poaching_probability: float = 1.0,
+        use_temporal_factors: bool = False
     ) -> List[GridRiskResult]:
         """
         Calculate risk for a batch of grid cells with proper normalization.
@@ -305,6 +311,7 @@ class RiskModel:
             grid_data: List of (Grid, Environment, SpeciesDensity) tuples
             time_context: Time and season context
             poaching_probability: Time-based poaching probability
+            use_temporal_factors: Whether to apply diurnal/seasonal/temporal factors (default: False)
 
         Returns:
             List of GridRiskResult with normalized risk values
@@ -314,7 +321,8 @@ class RiskModel:
         for grid, env, density in grid_data:
             raw_risk, components = self.calculator.calculate_raw(
                 grid, env, density, time_context, poaching_probability,
-                return_components=True
+                return_components=True,
+                use_temporal_factors=use_temporal_factors
             )
             raw_results.append((grid, raw_risk, components))
 
