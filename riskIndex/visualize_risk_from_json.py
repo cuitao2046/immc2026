@@ -102,17 +102,64 @@ def calculate_figure_size(num_cols: int, num_rows: int, grid_type: str = 'square
     Returns:
         Tuple of (width, height) in inches
     """
-    if grid_type == 'hex':
-        # Hexagon grid needs more width due to horizontal spacing
-        base_width = 1.5
-        base_height = 1.0
+    total_grids = num_cols * num_rows
+
+    if total_grids > 1000:
+        # For large grids, use smaller figure
+        scale_factor = 0.4
+    elif total_grids > 400:
+        scale_factor = 0.6
     else:
-        base_width = 1.0
-        base_height = 1.0
+        scale_factor = 1.0
+
+    if grid_type == 'hex':
+        base_width = 1.5 * scale_factor
+        base_height = 1.0 * scale_factor
+    else:
+        base_width = 1.0 * scale_factor
+        base_height = 1.0 * scale_factor
 
     width = max(10, num_cols * base_width + 4)
     height = max(8, num_rows * base_height + 3)
     return (width, height)
+
+
+def calculate_dpi(num_cols: int, num_rows: int) -> int:
+    """
+    Calculate appropriate DPI based on grid size.
+
+    Args:
+        num_cols: Number of columns
+        num_rows: Number of rows
+
+    Returns:
+        DPI value
+    """
+    total_grids = num_cols * num_rows
+    if total_grids > 2000:
+        return 100
+    elif total_grids > 1000:
+        return 120
+    else:
+        return 150
+
+
+def should_show_labels(num_cols: int, num_rows: int, user_request: bool) -> bool:
+    """
+    Determine if labels should be shown based on grid size.
+
+    Args:
+        num_cols: Number of columns
+        num_rows: Number of rows
+        user_request: Whether user requested labels
+
+    Returns:
+        True if labels should be shown
+    """
+    total_grids = num_cols * num_rows
+    if total_grids > 500:
+        return False  # Auto-disable for large grids
+    return user_request
 
 
 # ============================================================================
@@ -298,9 +345,15 @@ def visualize_risk_heatmap_square(
     square_size = 1.0
     fig_size = calculate_figure_size(num_cols, num_rows, 'square')
     font_size = calculate_font_size(num_cols, num_rows)
+    dpi = calculate_dpi(num_cols, num_rows)
+
+    # Auto-disable labels for large grids
+    actual_show_labels = should_show_labels(num_cols, num_rows, show_labels)
+    if actual_show_labels != show_labels:
+        print(f"  Auto-disabling labels for large grid ({num_cols}x{num_rows}={num_cols*num_rows} grids)")
 
     # Create visualization
-    fig, ax = plt.subplots(figsize=fig_size, dpi=100)
+    fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
     patches = []
 
     for y in range(num_rows):
@@ -324,7 +377,7 @@ def visualize_risk_heatmap_square(
     ax.add_collection(collection)
 
     # Add risk value labels
-    if show_labels:
+    if actual_show_labels:
         for (x, y), data in grid_data.items():
             risk = data["risk"]
             facecolor = face_colors.get((x, y), (0.5, 0.5, 0.5))
@@ -369,7 +422,7 @@ def visualize_risk_heatmap_square(
     ax.grid(alpha=0.2, linestyle='--')
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
     print(f"Risk heatmap saved to: {output_path}")
     plt.close(fig)
 
@@ -497,9 +550,15 @@ def visualize_risk_heatmap_hex(
     # Calculate visualization parameters
     fig_size = calculate_figure_size(num_cols, num_rows, 'hex')
     font_size = calculate_font_size(num_cols, num_rows)
+    dpi = calculate_dpi(num_cols, num_rows)
+
+    # Auto-disable labels for large grids
+    actual_show_labels = should_show_labels(num_cols, num_rows, show_labels)
+    if actual_show_labels != show_labels:
+        print(f"  Auto-disabling labels for large grid ({num_cols}x{num_rows}={num_cols*num_rows} grids)")
 
     # Create visualization
-    fig, ax = plt.subplots(figsize=fig_size, dpi=100)
+    fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
     patches = []
 
     for (x, y), data in grid_data.items():
@@ -525,7 +584,7 @@ def visualize_risk_heatmap_hex(
     ax.add_collection(collection)
 
     # Add risk value labels
-    if show_labels:
+    if actual_show_labels:
         for (x, y), data in grid_data.items():
             risk = data["risk"]
             facecolor = face_colors.get((x, y), (0.5, 0.5, 0.5))
@@ -573,7 +632,7 @@ def visualize_risk_heatmap_hex(
     ax.grid(alpha=0.2, linestyle='--')
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
     print(f"Risk heatmap saved to: {output_path}")
     plt.close(fig)
 
