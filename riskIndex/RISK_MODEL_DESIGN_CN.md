@@ -260,54 +260,251 @@ T_t = 1 + γ·sin(2πt/24)
 
 模型输入数据包括：
 
-### 9.1 网格空间数据
+### 9.1 枚举类型
 
-| 数据 | 描述 |
-|------|------|
-| 网格坐标 | 每个网格的中心位置 |
-| 到边界距离 | GIS计算 |
-| 到道路距离 | GIS计算 |
-| 到水源距离 | GIS计算 |
+#### VegetationType 枚举
+```
+VegetationType {
+    GRASSLAND = "grassland"    // 草原
+    FOREST = "forest"          // 森林
+    SHRUB = "shrub"            // 灌木
+}
+```
 
-### 9.2 环境数据
+#### Season 枚举
+```
+Season {
+    DRY = "dry"         // 旱季
+    RAINY = "rainy"     // 雨季
+}
+```
 
-| 数据 | 描述 |
-|------|------|
-| 植被类型 | 草原 / 森林 / 灌木 |
-| 火灾风险 | 0–1 |
-| 地形复杂度 | 0–1 |
+### 9.2 网格数据类
 
-### 9.3 动物数据
+#### Grid（输入
+```
+@dataclass
+Grid {
+    grid_id: str                    // 唯一标识符（如 "A12"）
+    x: float                        // 网格中心X坐标
+    y: float                        // 网格中心Y坐标
+    distance_to_boundary: float          // 到边界的归一化距离 [0,1]
+    distance_to_road: float            // 到道路的归一化距离 [0,1]
+    distance_to_water: float           // 到水源的归一化距离 [0,1]
+}
+```
 
-| 数据 | 描述 |
-|------|------|
-| 物种类型 | 犀牛、大象、鸟类 |
-| 密度分布 | 每个网格 |
+### 9.3 物种数据类
 
-### 9.4 时间数据
+#### Species
+```
+@dataclass
+Species {
+    name: str                         // 物种名称（如 "rhino", "elephant", "bird"）
+    weight: float                     // 保护权重（越高越重要）
+    rainy_season_multiplier: float      // 雨季密度乘数
+    dry_season_multiplier: float        // 旱季密度乘数
+}
+```
 
-| 数据 | 描述 |
-|------|------|
-| 时间 | 0–24小时 |
-| 季节 | 雨季 / 旱季 |
+#### SpeciesDensity
+```
+@dataclass
+SpeciesDensity {
+    densities: Dict[str, float]          // {物种名称 -> 归一化密度 [0,1]}
+}
+```
+
+### 9.4 环境数据类
+
+#### Environment
+```
+@dataclass
+Environment {
+    fire_risk: float                 // 火灾风险指数 [0,1]
+    terrain_complexity: float          // 地形复杂度 [0,1]
+    vegetation_type: VegetationType     // 植被类型
+}
+```
+
+### 9.5 时间上下文类
+
+#### TimeContext
+```
+@dataclass
+TimeContext {
+    hour_of_day: int                 // 一天中的小时 [0, 23]
+    season: Season                  // 当前季节（DRY 或 RAINY）
+
+    // 派生属性：
+    is_daytime: bool                 // 如果是 6:00-18:00 则为 true
+    is_nighttime: bool               // 如果是 18:00-6:00 则为 true
+}
+```
+
+### 9.6 输入字段摘要
+
+#### 网格空间数据
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| grid_id | string | - | 唯一标识符（如 "A12"） |
+| x | float | ≥ 0 | 网格中心X坐标 |
+| y | float | ≥ 0 | 网格中心Y坐标 |
+| distance_to_boundary | float | [0,1] | 到保护区边界的归一化距离（0=在边界，1=最远） |
+| distance_to_road | float | [0,1] | 到最近道路的归一化距离（0=在路边，1=最远） |
+| distance_to_water | float | [0,1] | 到最近水源的归一化距离 |
+
+#### 环境数据
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| fire_risk | float | [0,1] | 火灾风险指数（0=安全，1=危险） |
+| terrain_complexity | float | [0,1] | 地形复杂度（0=平坦，1=复杂） |
+| vegetation_type | enum | - | 植被类型（GRASSLAND, FOREST, SHRUB） |
+
+#### 动物数据
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| species_name | string | - | 物种名称 |
+| density | float | [0,1] | 网格中物种的归一化密度 |
+| weight | float | >0 | 物种的保护权重 |
+| rainy_season_multiplier | float | ≥0 | 雨季密度乘数 |
+| dry_season_multiplier | float | ≥0 | 旱季密度乘数 |
+
+#### 时间数据
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| hour_of_day | integer | [0,23] | 一天中的小时 |
+| season | enum | - | 季节（DRY, RAINY） |
 
 ---
 
 ## 10. 模型输出
 
-模型输出为保护区所有网格的风险系数：
+### 10.1 输出数据类
 
+#### RiskComponents（中间输出）
 ```
-R_i ∈ [0, 1]
+@dataclass
+RiskComponents {
+    human_risk: float             // 人为风险组件 [0, ~1]
+    environmental_risk: float        // 环境风险组件 [0, ~1]
+    density_value: float          // 加权物种密度值 [0, ~1]
+    diurnal_factor: float         // 昼夜乘数（通常 1.0-1.3）
+    seasonal_factor: float        // 季节乘数（通常 1.0-1.2）
+
+    // 派生属性：
+    temporal_factor: float        // diurnal_factor × seasonal_factor
+}
 ```
 
-### 10.1 示例输出
+#### GridRiskResult（单个网格的最终输出）
+```
+@dataclass
+GridRiskResult {
+    grid_id: str                  // 网格标识符（如 "A12"）
+    raw_risk: float               // 未归一化的风险值
+    normalized_risk: Optional[float]   // 归一化风险 [0,1]
+    components: Optional[RiskComponents]  // 单独的风险组件
+}
+```
 
-| 网格 | 风险值 |
-|------|--------|
-| A12 | 0.82 |
-| B07 | 0.65 |
-| C14 | 0.33 |
+### 10.2 归一化输出
+
+#### NormalizationEngine 状态
+```
+NormalizationEngine {
+    min_risk: Optional[float]     // 批次中最小原始风险
+    max_risk: Optional[float]     // 批次中最大原始风险
+    is_fitted: bool               // 调用 fit() 后为 true
+}
+```
+
+#### 归一化公式
+```
+R_i = (R'_i - R_min) / (R_max - R_min)
+```
+
+其中：
+- R'_i = 网格 i 的原始风险值
+- R_min = 批次中所有网格的最小原始风险
+- R_max = 批次中所有网格的最大原始风险
+- R_i = 归一化风险值 [0, 1]
+
+### 10.3 批次输出结构
+
+#### 批次计算结果
+```
+List[GridRiskResult] [
+    GridRiskResult {
+        grid_id: "A00",
+        raw_risk: 1.423,
+        normalized_risk: 1.000,
+        components: RiskComponents {
+            human_risk: 0.937,
+            environmental_risk: 0.760,
+            density_value: 1.032,
+            diurnal_factor: 1.3,
+            seasonal_factor: 1.2
+        }
+    },
+    GridRiskResult {
+        grid_id: "A01",
+        ...
+    },
+    ...
+]
+```
+
+### 10.4 输出字段摘要
+
+#### GridRiskResult 字段
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| grid_id | string | - | 唯一网格标识符 |
+| raw_risk | float | ≥0 | 未归一化的综合风险值 |
+| normalized_risk | float | [0,1] | 用于比较的归一化风险（未归一化时为 null） |
+
+#### RiskComponents 字段
+
+| 字段 | 类型 | 范围 | 描述 |
+|------|------|------|------|
+| human_risk | float | [0, ~1] | 人为威胁风险 |
+| environmental_risk | float | [0, ~1] | 环境风险 |
+| density_value | float | [0, ~1] | 加权物种密度（保护价值） |
+| diurnal_factor | float | ≥0 | 一天中的时间乘数 |
+| seasonal_factor | float | ≥0 | 季节乘数 |
+| temporal_factor | float | ≥0 | 组合时间乘数（派生） |
+
+### 10.5 示例输出
+
+#### 单个网格示例
+```
+GridRiskResult {
+    grid_id: "A12",
+    raw_risk: 1.380,
+    normalized_risk: 0.82,
+    components: RiskComponents {
+        human_risk: 0.92,
+        environmental_risk: 0.76,
+        density_value: 0.96,
+        diurnal_factor: 1.3,
+        seasonal_factor: 1.2
+    }
+}
+```
+
+#### 表格输出示例
+
+| 网格 | 原始风险 | 归一化风险 | 人为风险 | 环境风险 | 密度值 | 时间因子 |
+|------|----------|------------|----------|----------|--------|----------|
+| A12 | 1.380 | 0.82 | 0.92 | 0.76 | 0.96 | 1.56 |
+| B07 | 1.051 | 0.65 | 0.77 | 0.46 | 0.76 | 1.56 |
+| C14 | 0.534 | 0.33 | 0.38 | 0.28 | 0.41 | 1.56 |
 
 ---
 

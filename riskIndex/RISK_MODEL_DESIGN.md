@@ -260,54 +260,251 @@ Final risk weights:
 
 Model input data includes:
 
-### 9.1 Grid Spatial Data
+### 9.1 Enumeration Types
 
-| Data | Description |
-|------|-------------|
-| Grid coordinates | Center position of each grid |
-| Distance to boundary | GIS calculation |
-| Distance to road | GIS calculation |
-| Distance to water | GIS calculation |
+#### VegetationType Enum
+```
+VegetationType {
+    GRASSLAND = "grassland"
+    FOREST = "forest"
+    SHRUB = "shrub"
+}
+```
 
-### 9.2 Environmental Data
+#### Season Enum
+```
+Season {
+    DRY = "dry"
+    RAINY = "rainy"
+}
+```
 
-| Data | Description |
-|------|-------------|
-| Vegetation type | Grassland / Forest / Shrub |
-| Fire risk | 0–1 |
-| Terrain complexity | 0–1 |
+### 9.2 Grid Data Class
 
-### 9.3 Animal Data
+#### Grid (Input
+```
+@dataclass
+Grid {
+    grid_id: str                    # Unique identifier (e.g., "A12")
+    x: float                        # X coordinate of grid center
+    y: float                        # Y coordinate of grid center
+    distance_to_boundary: float          # Normalized distance to boundary [0,1]
+    distance_to_road: float            # Normalized distance to road [0,1]
+    distance_to_water: float           # Normalized distance to water [0,1]
+}
+```
 
-| Data | Description |
-|------|-------------|
-| Species type | Rhino, Elephant, Bird |
-| Density distribution | Per grid |
+### 9.3 Species Data Classes
 
-### 9.4 Time Data
+#### Species
+```
+@dataclass
+Species {
+    name: str                         # Species name (e.g., "rhino", "elephant", "bird")
+    weight: float                     # Conservation weight (higher = more important)
+    rainy_season_multiplier: float      # Density multiplier for rainy season
+    dry_season_multiplier: float        # Density multiplier for dry season
+}
+```
 
-| Data | Description |
-|------|-------------|
-| Time | 0–24 hours |
-| Season | Rainy / Dry |
+#### SpeciesDensity
+```
+@dataclass
+SpeciesDensity {
+    densities: Dict[str, float]          # {species_name -> normalized_density [0,1]]
+}
+```
+
+### 9.4 Environment Data Class
+
+#### Environment
+```
+@dataclass
+Environment {
+    fire_risk: float                 # Fire risk index [0,1]
+    terrain_complexity: float          # Terrain complexity [0,1]
+    vegetation_type: VegetationType     # Type of vegetation
+}
+```
+
+### 9.5 Time Context Class
+
+#### TimeContext
+```
+@dataclass
+TimeContext {
+    hour_of_day: int                 # Hour of the day [0, 23]
+    season: Season                  # Current season (DRY or RAINY)
+
+    # Derived properties:
+    is_daytime: bool                 # True if 6:00-18:00
+    is_nighttime: bool               # True if 18:00-6:00
+}
+```
+
+### 9.6 Summary of Input Fields
+
+#### Grid Spatial Data
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| grid_id | string | - | Unique identifier (e.g., "A12" |
+| x | float | ≥ 0 | X coordinate of grid center |
+| y | float | ≥ 0 | Y coordinate of grid center |
+| distance_to_boundary | float | [0,1] | Normalized distance to protected area boundary (0=at boundary, 1=farthest) |
+| distance_to_road | float | [0,1] | Normalized distance to nearest road (0=at road, 1=farthest) |
+| distance_to_water | float | [0,1] | Normalized distance to nearest water source |
+
+#### Environmental Data
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| fire_risk | float | [0,1] | Fire risk index (0=safe, 1=dangerous) |
+| terrain_complexity | float | [0,1] | Terrain complexity (0=flat, 1=complex) |
+| vegetation_type | enum | - | Vegetation type (GRASSLAND, FOREST, SHRUB) |
+
+#### Animal Data
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| species_name | string | - | Name of species |
+| density | float | [0,1] | Normalized density of species in grid |
+| weight | float | >0 | Conservation weight of species |
+| rainy_season_multiplier | float | ≥0 | Density multiplier for rainy season |
+| dry_season_multiplier | float | ≥0 | Density multiplier for dry season |
+
+#### Time Data
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| hour_of_day | integer | [0,23] | Hour of the day |
+| season | enum | - | Season (DRY, RAINY) |
 
 ---
 
 ## 10. Model Output
 
-Model output is the risk coefficient for all grids in the protected area:
+### 10.1 Output Data Classes
 
+#### RiskComponents (Intermediate Output)
 ```
-R_i ∈ [0, 1]
+@dataclass
+RiskComponents {
+    human_risk: float             # Human risk component [0, ~1]
+    environmental_risk: float        # Environmental risk component [0, ~1]
+    density_value: float          # Weighted species density value [0, ~1]
+    diurnal_factor: float         # Diurnal multiplier (typically 1.0-1.3)
+    seasonal_factor: float        # Seasonal multiplier (typically 1.0-1.2)
+
+    # Derived property:
+    temporal_factor: float        # diurnal_factor × seasonal_factor
+}
 ```
 
-### 10.1 Example Output
+#### GridRiskResult (Final Output for Single Grid)
+```
+@dataclass
+GridRiskResult {
+    grid_id: str                  # Grid identifier (e.g., "A12")
+    raw_risk: float               # Non-normalized risk value
+    normalized_risk: Optional[float]   # Normalized risk [0,1]
+    components: Optional[RiskComponents]  # Individual risk components
+}
+```
 
-| Grid | Risk Value |
-|------|------------|
-| A12 | 0.82 |
-| B07 | 0.65 |
-| C14 | 0.33 |
+### 10.2 Normalization Output
+
+#### NormalizationEngine State
+```
+NormalizationEngine {
+    min_risk: Optional[float]     # Minimum raw risk in batch
+    max_risk: Optional[float]     # Maximum raw risk in batch
+    is_fitted: bool               # True after fit() is called
+}
+```
+
+#### Normalization Formula
+```
+R_i = (R'_i - R_min) / (R_max - R_min)
+```
+
+Where:
+- R'_i = Raw risk value for grid i
+- R_min = Minimum raw risk across all grids in batch
+- R_max = Maximum raw risk across all grids in batch
+- R_i = Normalized risk value [0, 1]
+
+### 10.3 Batch Output Structure
+
+#### Batch Calculation Result
+```
+List[GridRiskResult] [
+    GridRiskResult {
+        grid_id: "A00",
+        raw_risk: 1.423,
+        normalized_risk: 1.000,
+        components: RiskComponents {
+            human_risk: 0.937,
+            environmental_risk: 0.760,
+            density_value: 1.032,
+            diurnal_factor: 1.3,
+            seasonal_factor: 1.2
+        }
+    },
+    GridRiskResult {
+        grid_id: "A01",
+        ...
+    },
+    ...
+]
+```
+
+### 10.4 Output Fields Summary
+
+#### GridRiskResult Fields
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| grid_id | string | - | Unique grid identifier |
+| raw_risk | float | ≥0 | Non-normalized composite risk value |
+| normalized_risk | float | [0,1] | Normalized risk for comparison (null if not normalized) |
+
+#### RiskComponents Fields
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| human_risk | float | [0, ~1] | Human threat risk |
+| environmental_risk | float | [0, ~1] | Environmental risk |
+| density_value | float | [0, ~1] | Weighted species density (conservation value) |
+| diurnal_factor | float | ≥0 | Time of day multiplier |
+| seasonal_factor | float | ≥0 | Season multiplier |
+| temporal_factor | float | ≥0 | Combined time multiplier (derived) |
+
+### 10.5 Example Output
+
+#### Single Grid Example
+```
+GridRiskResult {
+    grid_id: "A12",
+    raw_risk: 1.380,
+    normalized_risk: 0.82,
+    components: RiskComponents {
+        human_risk: 0.92,
+        environmental_risk: 0.76,
+        density_value: 0.96,
+        diurnal_factor: 1.3,
+        seasonal_factor: 1.2
+    }
+}
+```
+
+#### Tabular Output Example
+
+| Grid | Raw Risk | Normalized Risk | Human | Env | Density | Temporal |
+|------|----------|----------------|-------|-----|---------|----------|
+| A12 | 1.380 | 0.82 | 0.92 | 0.76 | 0.96 | 1.56 |
+| B07 | 1.051 | 0.65 | 0.77 | 0.46 | 0.76 | 1.56 |
+| C14 | 0.534 | 0.33 | 0.38 | 0.28 | 0.41 | 1.56 |
 
 ---
 
