@@ -326,6 +326,8 @@ class SpatialDataGenerator:
         """
         Calculate the final risk map.
 
+        Uses the SAME calculation logic as the main risk model for consistency.
+
         Args:
             d_boundary: Distance to boundary map
             d_road: Distance to road map
@@ -341,23 +343,45 @@ class SpatialDataGenerator:
         """
         risk = np.zeros((self.config.size, self.config.size))
 
-        # Time factors
+        # Time factors - same as main model
         t_factor = 1.3 if (self.config.hour < 6 or self.config.hour > 18) else 1.0
         s_factor = 1.2 if self.config.season == "rainy" else 1.0
 
+        # Seasonal multipliers for species - same as main model defaults
+        if self.config.season == "rainy":
+            rhino_mult = 1.2
+            elephant_mult = 1.3
+            bird_mult = 1.5
+        else:
+            rhino_mult = 1.0
+            elephant_mult = 0.9
+            bird_mult = 0.8
+
+        # Max distances for normalization - same as adapter
+        max_boundary_dist = self.config.size / 2
+        max_road_dist = self.config.size
+        max_water_dist = self.config.size
+
         for i in range(self.config.size):
             for j in range(self.config.size):
-                # Human risk
-                h = 0.4 * (1 / (d_boundary[i, j] + 1)) + \
-                    0.35 * (1 / (d_road[i, j] + 1)) + \
-                    0.25 * (1 / (d_water[i, j] + 1))
+                # Human risk - same as main model: 1 - normalized_distance
+                d_boundary_norm = min(d_boundary[i, j] / max_boundary_dist, 1.0)
+                d_road_norm = min(d_road[i, j] / max_road_dist, 1.0)
+                d_water_norm = min(d_water[i, j] / max_water_dist, 1.0)
 
-                # Environmental risk
+                # Proximity = 1 - normalized_distance (same as Grid.proximity_score)
+                h = (0.4 * (1.0 - d_boundary_norm) +
+                     0.35 * (1.0 - d_road_norm) +
+                     0.25 * (1.0 - d_water_norm))
+
+                # Environmental risk - same as main model
                 terrain_diff = terrain[i, j] / 3
                 e = 0.6 * fire_risk[i, j] + 0.4 * terrain_diff
 
-                # Density value
-                d = 0.5 * rhino[i, j] + 0.3 * elephant[i, j] + 0.2 * bird[i, j]
+                # Density value with seasonal multipliers - same as main model
+                d = (0.5 * rhino[i, j] * rhino_mult +
+                     0.3 * elephant[i, j] * elephant_mult +
+                     0.2 * bird[i, j] * bird_mult)
 
                 risk[i, j] = (0.4 * h + 0.3 * e + 0.3 * d) * t_factor * s_factor
 
